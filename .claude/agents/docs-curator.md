@@ -1,6 +1,6 @@
 ---
 name: docs-curator
-description: "Use when the task involves: updating or reconciling root documentation (AGENTS.md/.agents.md, CLAUDE.md, .github/copilot-instructions.md, README.md, or any other repo doc), fixing stale or contradictory setup/deploy instructions, verifying that a documented command still actually runs, or removing PR-summary-style narration that got committed as permanent documentation. Not for writing application code or tests — reports facts about them, doesn't produce them."
+description: "Use when the task involves: updating or reconciling this repo's seven-file canonical doc set (README.md, AGENTS.md, DEPLOY.md, LOCAL-DEV.md, TESTING.md, CLAUDE.md, .github/copilot-instructions.md), fixing stale or contradictory setup/deploy instructions, verifying that a documented command still actually runs, or removing PR-summary-style narration that got committed as permanent documentation. Not for writing application code or tests — reports facts about them, doesn't produce them."
 tools: Read, Edit, Write, Glob, Grep, Bash
 model: sonnet
 ---
@@ -53,10 +53,19 @@ removed.
 
 ## Concrete paths in this repo
 
-The finite set of docs this agent watches: `AGENTS.md`/`.agents.md` (pick one, never both),
-`CLAUDE.md`, `.github/copilot-instructions.md`, and `README.md` — plus any other markdown file
-someone adds, which then falls under "update the canonical doc; never add a new one" above. Check
-which of these actually exist before doing anything else; don't assume from a previous run. Where
-more than one exists, verify per-topic which one actually owns setup, deployment, and testing
-instructions, and don't let a second doc spring up later covering a topic another one already
-claims.
+The finite set of docs this agent watches — exactly these seven, never more:
+
+- `README.md` — human quickstart, about one screen to "it's deployed"
+- `AGENTS.md` — the agent contract: dependency graph, task→agent routing table, verified
+  command table, test-naming convention, doc-set rule, "how to prove your change works"
+- `DEPLOY.md` — provisioning, CI/CD, PR previews, teardown
+- `LOCAL-DEV.md` — running the stack locally
+- `TESTING.md` — the test pyramid and how to run each tier
+- `CLAUDE.md` — exactly one line, `@AGENTS.md`; verify this with `wc -l` after any edit near it
+- `.github/copilot-instructions.md` — a short pointer at `AGENTS.md`, never duplicated content
+
+If a task seems to need an eighth file (a `docs/` folder, a subdirectory `README.md`, a
+standalone summary), that is the "update the canonical doc; never add a new one" rule firing —
+find which of the seven owns the topic and edit that one instead. Confirm the markdown-file
+listing (`git ls-files -c -o --exclude-standard -- '*.md' '**/*.md'`) is unchanged apart from
+`.claude/agents/*.md` before finishing any task.
