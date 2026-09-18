@@ -19,14 +19,8 @@ bash scripts/validate-environment.sh
 
 It checks tool versions, that the solution builds, that the dev ports are free, that
 `swa-cli.config.json` agrees with `scripts/ports.env`, and that a Playwright Chromium browser is
-cached — and starts nothing itself. **Known false-fail:** the last check globs both
-`~/Library/Caches/ms-playwright` (macOS) and `~/.cache/ms-playwright` (Linux) with `find`, and
-under the script's `set -o pipefail` a nonexistent path makes `find` exit non-zero and the whole
-check report `FAIL` even when Chromium is installed and cached under whichever of the two paths
-actually exists on your OS. Observed on macOS in this session: `FAIL: no Playwright chromium
-browser cache found` with Chromium already present under `~/Library/Caches/ms-playwright/`. If
-you hit this, confirm directly — `ls ~/Library/Caches/ms-playwright/` (or the Linux path) and
-look for a `chromium-*` entry — before assuming Playwright isn't installed.
+cached — and starts nothing itself. It exits non-zero on the first real problem and prints what
+to run to fix it.
 
 ## Running the stack
 
