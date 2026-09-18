@@ -60,3 +60,14 @@ variable "tags" {
     ManagedBy = "Terraform"
   }
 }
+
+variable "log_analytics_daily_quota_gb" {
+  description = "Caps daily Log Analytics ingestion. Ingestion is the only per-GB-priced thing this stack provisions, and the first 5 GB/month is free, so a cap below that keeps an unauthenticated public API from turning traffic into a bill. Set to -1 to remove the cap."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.log_analytics_daily_quota_gb == -1 || var.log_analytics_daily_quota_gb >= 0.023
+    error_message = "log_analytics_daily_quota_gb must be -1 (uncapped) or at least 0.023, the minimum Azure accepts."
+  }
+}
