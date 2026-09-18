@@ -88,4 +88,11 @@ resource "azurerm_static_web_app" "main" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    # The deploy action stamps the source repo and branch onto the resource on
+    # every upload. Terraform never sets them, so without this a later apply
+    # would keep trying to clear them back out.
+    ignore_changes = [repository_url, repository_branch]
+  }
 }

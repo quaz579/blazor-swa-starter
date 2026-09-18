@@ -203,7 +203,11 @@ else
   else
     fail "tests/node_modules/@playwright/test missing — run npm ci in tests/"
   fi
-  if find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" -maxdepth 1 -iname 'chromium-*' 2>/dev/null | grep -q .; then
+  # Only one of the two cache locations exists on any given OS, so find always
+  # exits non-zero; under `set -o pipefail` that would sink the whole pipeline
+  # regardless of what it matched.
+  if { find "$HOME/Library/Caches/ms-playwright" "$HOME/.cache/ms-playwright" \
+        -maxdepth 1 -iname 'chromium-*' 2>/dev/null || true; } | grep -q .; then
     ok "Playwright chromium browser cached"
   else
     fail "no Playwright chromium browser cache found — run: (cd tests && npx playwright install --with-deps chromium)"

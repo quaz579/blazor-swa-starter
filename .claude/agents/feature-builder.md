@@ -35,14 +35,21 @@ tests. This is the agent an autonomous POC run leans on most.
    don't invent a new composition pattern if one is already established (e.g. isolated-worker
    `Program.cs` + `ConfigureFunctionsWebApplication`).
 3. Add the Web (Blazor) page/component that calls the endpoint through the existing API-client
-   pattern.
+   pattern (e.g. `src/App.Web/Services/ItemsApiClient.cs`). The app's root component is
+   `AppRoot.razor`, not `App.razor` — the framework's default name would collide with the `App`
+   root namespace, so don't reintroduce it.
 4. Write/verify tests at each layer as you go, not as an afterthought at the end.
 5. Run the full unit/component suite, then the local E2E stack if the slice is user-facing, and
    report both results.
 
 ## Concrete paths in this repo
 
-Core model in `src/AgainstTheSpread.Core/`, Functions endpoint in
-`src/AgainstTheSpread.Functions/`, Blazor page/component in `src/AgainstTheSpread.Web/`, tests
-mirroring each in `src/AgainstTheSpread.Tests/{Models,Functions,Web}/`, browser spec in
-`tests/specs/` with a page object in `tests/pages/` if one doesn't already cover the flow.
+Core model in `src/App.Core/Models/`, storage abstraction in
+`src/App.Core/Storage/IBlobJsonStore.cs`, Functions endpoint in `src/App.Api/Functions/`. A new
+model gets its own blob-backed collection with one line in `src/App.Api/Program.cs`:
+`services.AddBlobJsonStore<YourModel>("your-prefix")` (see
+`src/App.Api/Storage/ServiceCollectionExtensions.cs`) — no new store class needed unless the
+model's persistence needs diverge from JSON-blob-per-key. Blazor page/component in
+`src/App.Web/Pages/`, tests mirroring each in `src/App.Tests/{Models,Functions,Storage,Web}/`,
+browser spec in `tests/specs/` with a page object in `tests/pages/` if one doesn't already cover
+the flow.

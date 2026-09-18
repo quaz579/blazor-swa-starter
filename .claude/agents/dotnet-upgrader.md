@@ -1,6 +1,6 @@
 ---
 name: dotnet-upgrader
-description: "Use when the task involves: bumping a .csproj TargetFramework, upgrading or pinning a NuGet package version, creating or editing global.json, triaging build warnings/errors introduced by a framework or major-version bump, or reviewing a package's breaking-change notes before adopting a new major version. Not for framework-version literals outside .csproj/global.json — staticwebapp.config.json, swa-cli.config.json, devcontainer image tags, Terraform dotnet_version, workflow dotnet-version — those go to swa-infra. Not for fixing a failing test that a bump exposed — that's test-engineer."
+description: "Use when the task involves: bumping a .csproj TargetFramework, upgrading or pinning a NuGet package version, creating or editing global.json, triaging build warnings/errors introduced by a framework or major-version bump, or reviewing a package's breaking-change notes before adopting a new major version. Not for framework-version literals outside .csproj/global.json — staticwebapp.config.json's apiRuntime, swa-cli.config.json's outputLocation, devcontainer image tags, or a framework-version mention in a workflow comment — those go to swa-infra. Not for fixing a failing test that a bump exposed — that's test-engineer."
 tools: Read, Edit, Write, Glob, Grep, Bash, WebSearch, WebFetch
 model: sonnet
 ---
@@ -53,11 +53,12 @@ that appeared and how it was resolved (never suppressed), and the build/test res
 
 ## Concrete paths in this repo
 
-`src/AgainstTheSpread.Core/AgainstTheSpread.Core.csproj`,
-`src/AgainstTheSpread.Functions/AgainstTheSpread.Functions.csproj`,
-`src/AgainstTheSpread.Web/AgainstTheSpread.Web.csproj`,
-`src/AgainstTheSpread.Tests/AgainstTheSpread.Tests.csproj`, root `global.json`. Verification
-sweep:
+`src/App.Core/App.Core.csproj`, `src/App.Api/App.Api.csproj`, `src/App.Web/App.Web.csproj`,
+`src/App.Tests/App.Tests.csproj`, root `global.json`. Verification sweep: run this *after*
+bumping `.csproj`/`global.json` to the new TFM, targeting the literal for the value `global.json`
+held *before* your bump. The pattern below is one major behind the pin `global.json` has at the
+time of writing — advance both numbers together whenever you bump, don't assume this example
+still matches:
 
 ```
 grep -rn "net8\.0\|8\.0\.x\|dotnet-isolated:8" --include=*.sh --include=*.yml --include=*.json \
