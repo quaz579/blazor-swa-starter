@@ -53,10 +53,10 @@ removed.
 
 ## Concrete paths in this repo
 
-Canonical docs: `.agents.md`, `.github/copilot-instructions.md`, root `CLAUDE.md`. Known
-contradictions at time of writing: three different deployment stories
-(`QUICK-DEPLOY.md` manual `az`, `DEPLOYMENT.md` Terraform-with-publish-profiles, and
-`infrastructure/README.md` describing a standalone Function App that Terraform never actually
-applies — the real deploy is the single `Azure/static-web-apps-deploy@v1` step in the SWA
-workflow), several near-duplicate devcontainer/Copilot setup docs, and `.agents.md`'s "MVP: No
-authentication" line, which the shipped Google auth in `src/AgainstTheSpread.Web` contradicts.
+The finite set of docs this agent watches: `AGENTS.md`/`.agents.md` (pick one, never both),
+`CLAUDE.md`, `.github/copilot-instructions.md`, and `README.md` — plus any other markdown file
+someone adds, which then falls under "update the canonical doc; never add a new one" above. Check
+which of these actually exist before doing anything else; don't assume from a previous run. Where
+more than one exists, verify per-topic which one actually owns setup, deployment, and testing
+instructions, and don't let a second doc spring up later covering a topic another one already
+claims.
