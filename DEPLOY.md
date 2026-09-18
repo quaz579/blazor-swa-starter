@@ -67,6 +67,41 @@ production storage connection string.** It is not an isolated sandbox; only the 
 `smoke-preview` does. Closing the PR runs `.github/workflows/pr-cleanup.yml`, which tears the
 preview slot down.
 
+## Write auth
+
+The deployed demo is public, and `App.Api`'s Functions all carry `AuthorizationLevel.Anonymous`
+by design (no function key) — the API would otherwise be world-writable at the HTTP layer. So
+writes are gated one layer up, in `src/App.Web/wwwroot/staticwebapp.config.json`, via two route
+rules:
+
+```json
+{
+  "route": "/api/items",
+  "methods": ["POST"],
+  "allowedRoles": ["authenticated"]
+},
+{
+  "route": "/api/items/*",
+  "methods": ["DELETE"],
+  "allowedRoles": ["authenticated"]
+}
+```
+
+`methods` scopes each rule to one verb, so `GET /api/items` and `GET /api/items/{id}` fall
+through unmatched and stay anonymous. Static Web Apps enforces `allowedRoles` itself, in front
+of the Function, using its built-in auth providers — Microsoft Entra ID and GitHub are
+pre-configured on Free tier (a custom OIDC/OAuth provider needs Standard tier). A visitor signs
+in at `/.auth/login/aad` or `/.auth/login/github` on the deployed URL (`/.auth/me` shows the
+resulting principal); without a `role: authenticated` session, they get a 401 before the
+request reaches `App.Api`. No Functions code, `AuthorizationLevel`, or `App.Core` change is
+involved, and no endpoint is removed.
+
+To open the API back up for your own fork, delete both route rules above from
+`staticwebapp.config.json`. That's the entire change; nothing else references them.
+
+Locally, the SWA CLI emulator enforces `allowedRoles` the same way, so the Playwright specs
+that exercise `POST`/`DELETE` authenticate first — see `TESTING.md`.
+
 ## Teardown
 
 ```sh

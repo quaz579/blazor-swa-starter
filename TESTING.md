@@ -51,6 +51,15 @@ CRUD flows, validation, empty/error states, and a guard spec
 (`azurite-seed-guard.spec.ts`) that proves the fixture seeder refuses any connection string
 other than `UseDevelopmentStorage=true`.
 
+`staticwebapp.config.json` requires an authenticated session for `POST`/`DELETE` on
+`/api/items` (see `DEPLOY.md`'s "Write auth"), and the SWA CLI emulator enforces that locally
+too. The two specs that exercise those verbs (`items-create.spec.ts`, `items-delete.spec.ts`)
+call `loginAsAuthenticatedUser` from `tests/helpers/auth.ts` in a `beforeEach`, which sets the
+emulator's `StaticWebAppsAuthCookie` directly — the same base64-JSON principal the emulator's
+own `/.auth/login/<provider>` mock form would set, without driving that page. The `@smoke`
+specs stay unauthenticated and read-only, since they also run against deployed preview
+environments where a login flow would be wrong.
+
 Run only the read-only smoke subset (the only tests safe against a deployed preview or live
 URL — see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 

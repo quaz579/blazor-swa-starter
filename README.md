@@ -4,6 +4,11 @@ Blazor WebAssembly PWA + an Azure Functions isolated-worker managed API, deploye
 Static Web Apps (Free tier) and provisioned end-to-end by Terraform. .NET version comes from
 [`global.json`](global.json).
 
+The deployed demo gates writes (`POST`/`DELETE` on `/api/items`) behind a logged-in user via
+route rules in `staticwebapp.config.json`, with no application code involved — see
+[`DEPLOY.md`](DEPLOY.md#write-auth). Removing those two route rules is the first step to
+opening the API up for your own use.
+
 ## Run it locally
 
 Prerequisites: the .NET SDK `global.json` pins, Node 22.x, [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local) v4,

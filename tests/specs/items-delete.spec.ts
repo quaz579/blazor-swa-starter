@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { loginAsAuthenticatedUser } from '../helpers/auth';
 import { clearItems, seedItems } from '../helpers/seed-azurite-fixtures';
 import { ItemsPage } from '../pages/items-page';
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ context }) => {
   await clearItems();
+  await loginAsAuthenticatedUser(context);
 });
 
 test('deleting a row removes it, and it stays gone after a reload', async ({ page }) => {

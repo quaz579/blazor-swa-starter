@@ -1,9 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { loginAsAuthenticatedUser } from '../helpers/auth';
 import { clearItems } from '../helpers/seed-azurite-fixtures';
 import { ItemsPage } from '../pages/items-page';
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ context }) => {
   await clearItems();
+  await loginAsAuthenticatedUser(context);
 });
 
 test('creating an item through the form shows it, and it survives a reload', async ({ page }) => {
