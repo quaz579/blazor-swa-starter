@@ -1,0 +1,13 @@
+{
+  "$schema": "https://aka.ms/azure/static-web-apps-cli/schema",
+  "configurations": {
+    "app": {
+      "outputLocation": "src/App.Web/bin/Debug/net9.0/wwwroot",
+      "appDevserverUrl": "http://localhost:5158",
+      "apiLocation": "src/App.Api",
+      "apiDevserverUrl": "http://localhost:7071",
+      "apiLanguage": "dotnet-isolated",
+      "port": 4280
+    }
+  }
+}
