@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (gitignored) and fill in, or set the corresponding
+# environment variables instead:
+#   - subscription_id can be left unset here if ARM_SUBSCRIPTION_ID is exported.
+#   - Before running `apply`, export GITHUB_TOKEN with "repo" scope so the
+#     github provider can write the deployment token secret to your repository.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+project_name = "swapp"
+location     = "eastus2"
+environment  = "dev"
+
+github_owner      = "your-github-org-or-user"
+github_repository = "your-repo-name"
+
+allowed_origins = ["http://localhost:4280"]
+
+tags = {
+  Project   = "blazor-swa-starter"
+  ManagedBy = "Terraform"
+}
