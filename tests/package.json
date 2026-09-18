@@ -1,0 +1,20 @@
+{
+  "name": "blazor-swa-starter-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright E2E tests for the Blazor SWA starter",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@azure/storage-blob": "12.33.0",
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.3",
+    "typescript": "5.9.3"
+  }
+}
