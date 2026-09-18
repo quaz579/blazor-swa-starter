@@ -1,4 +1,5 @@
 import { Locator, Page } from '@playwright/test';
+import { NavMenu } from './nav-menu';
 
 /** Page Object Model for the items page (`/items`). */
 export class ItemsPage {
@@ -13,6 +14,7 @@ export class ItemsPage {
   readonly descriptionInput: Locator;
   readonly addButton: Locator;
   readonly validationError: Locator;
+  readonly nav: NavMenu;
 
   constructor(page: Page) {
     this.page = page;
@@ -26,6 +28,7 @@ export class ItemsPage {
     this.descriptionInput = page.getByTestId('item-description-input');
     this.addButton = page.getByTestId('item-add-button');
     this.validationError = page.getByTestId('item-validation-error');
+    this.nav = new NavMenu(page);
   }
 
   async goto(): Promise<void> {
