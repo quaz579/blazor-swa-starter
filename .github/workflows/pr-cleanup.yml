@@ -1,0 +1,23 @@
+name: PR Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: pr-cleanup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  close-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Close pull request preview environment
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: close
