@@ -18,10 +18,10 @@ dotnet test BlazorSwaStarter.sln -c Release
 Runs all three .NET tiers together (bUnit tests build on the xunit runner). The integration
 tier's tests are attributed `[AzuriteFact]` (`src/App.Tests/Storage/AzuriteFactAttribute.cs`), a
 custom `FactAttribute` that probes `127.0.0.1:10000` and **skips — not fails —** when nothing is
-listening there. Observed in this repo: 64 tests total, 6 of them Azurite-gated; with no
-emulator running, `dotnet test` reports `Passed: 58, Skipped: 6, Failed: 0`; with
-`npx azurite@^3.37.0 --location <dir> --blobPort 10000 --queuePort 10001 --tablePort 10002`
-running standalone, all 64 pass.
+listening there, so a bare `dotnet test` with no emulator running reports those tests as
+skipped rather than failed. Start a standalone Azurite first
+(`npx azurite@^3.37.0 --location <dir> --blobPort 10000 --queuePort 10001 --tablePort 10002`) to
+have that tier actually execute.
 
 Each `BlobJsonStoreAzuriteTests` instance uses a unique `test-<guid>` blob-path prefix and
 cleans up only the keys it created in `DisposeAsync`, so tests never collide and a bare
@@ -40,7 +40,7 @@ a match; see `.claude/agents/test-engineer.md` for the full hard rules this repo
 
 ```sh
 ./scripts/start-e2e.sh
-cd tests && npm ci && npm test        # all 11 specs
+cd tests && npm ci && npm test        # every spec under tests/specs/
 ./scripts/stop-e2e.sh                 # always pair with start, including on failure
 ```
 

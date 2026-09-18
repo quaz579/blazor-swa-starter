@@ -7,10 +7,9 @@ looks stale, fix it here rather than writing a second doc that disagrees with it
 ## What this is
 
 A Blazor WebAssembly PWA + an Azure Functions **isolated-worker** managed API, deployed to
-**Azure Static Web Apps (Free tier)**, provisioned end-to-end by Terraform (aliased to
-OpenTofu on this machine). The domain is deliberately generic (`Item`, a JSON blob per item)
-so the shape generalizes to a real feature. It exists so an agent can clone it and stand up a
-deployed app unattended — see `DEPLOY.md`.
+**Azure Static Web Apps (Free tier)**, provisioned end-to-end by Terraform. The domain is
+deliberately generic (`Item`, a JSON blob per item) so the shape generalizes to a real feature.
+It exists so an agent can clone it and stand up a deployed app unattended — see `DEPLOY.md`.
 
 ## Dependency graph — one direction only
 
