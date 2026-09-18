@@ -10,6 +10,7 @@ namespace App.Api.Functions;
 public sealed class ItemsFunction
 {
     private const int MaxNameLength = 100;
+    private const int MaxDescriptionLength = 1000;
 
     private readonly ILogger<ItemsFunction> _logger;
     private readonly IBlobJsonStore<Item> _store;
@@ -180,6 +181,11 @@ public sealed class ItemsFunction
         if (request.Name.Trim().Length > MaxNameLength)
         {
             return $"Name must be {MaxNameLength} characters or fewer.";
+        }
+
+        if (request.Description is not null && request.Description.Length > MaxDescriptionLength)
+        {
+            return $"Description must be {MaxDescriptionLength} characters or fewer.";
         }
 
         return null;

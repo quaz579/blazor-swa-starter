@@ -216,6 +216,37 @@ public sealed class ItemsFunctionTests
     }
 
     [Fact]
+    public async Task CreateItem_DescriptionExactly1000Chars_Returns201()
+    {
+        // Arrange
+        var description = new string('a', 1000);
+        var request = TestHttpRequestData.CreateRequest("POST", jsonBody: new { name = "Widget", description });
+
+        // Act
+        var response = await _function.CreateItem(request, CancellationToken.None);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task CreateItem_DescriptionExceeds1000Chars_Returns400WithErrorBody()
+    {
+        // Arrange
+        var description = new string('a', 1001);
+        var request = TestHttpRequestData.CreateRequest("POST", jsonBody: new { name = "Widget", description });
+
+        // Act
+        var response = await _function.CreateItem(request, CancellationToken.None);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("error").GetString().Should().Be("Description must be 1000 characters or fewer.");
+        await _store.DidNotReceive().PutAsync(Arg.Any<string>(), Arg.Any<Item>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task DeleteItem_ItemExists_Returns204NoContent()
     {
         // Arrange

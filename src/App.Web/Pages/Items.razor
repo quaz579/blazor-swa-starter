@@ -57,6 +57,7 @@
 
 @code {
     private const int MaxNameLength = 100;
+    private const int MaxDescriptionLength = 1000;
 
     private List<Item> _items = [];
     private bool _loading = true;
@@ -106,6 +107,12 @@
         if (trimmedName.Length > MaxNameLength)
         {
             _validationError = $"Name must be {MaxNameLength} characters or fewer.";
+            return;
+        }
+
+        if (_description is not null && _description.Length > MaxDescriptionLength)
+        {
+            _validationError = $"Description must be {MaxDescriptionLength} characters or fewer.";
             return;
         }
 

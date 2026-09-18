@@ -119,6 +119,32 @@ public sealed class ItemsPageTests : TestContext
     }
 
     [Fact]
+    public void Items_CreateForm_DescriptionExceeds1000Chars_ShowsValidationErrorWithoutCallingApi()
+    {
+        // Arrange
+        var postCount = 0;
+        RegisterApiClient((req, _) =>
+        {
+            if (req.Method == HttpMethod.Post)
+            {
+                postCount++;
+            }
+            return Task.FromResult(FakeApiResponses.Ok(new List<Item>()));
+        });
+        var cut = RenderComponent<Items>();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+
+        // Act
+        cut.Find("[data-testid='item-name-input']").Input("Widget");
+        cut.Find("[data-testid='item-description-input']").Input(new string('a', 1001));
+        cut.Find("[data-testid='item-add-button']").Click();
+
+        // Assert
+        cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Description must be 1000 characters or fewer.");
+        postCount.Should().Be(0);
+    }
+
+    [Fact]
     public void Items_CreateForm_ValidInput_CreatesItemAndReloadsList()
     {
         // Arrange
