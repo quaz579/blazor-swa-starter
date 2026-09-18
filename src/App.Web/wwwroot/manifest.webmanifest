@@ -1,0 +1,30 @@
+{
+  "name": "Blazor SWA Starter",
+  "short_name": "SWA Starter",
+  "description": "A generic starter for Blazor WASM + Azure Functions on Azure Static Web Apps",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0d6efd",
+  "categories": [
+    "productivity"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    }
+  ]
+}

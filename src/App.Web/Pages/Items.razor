@@ -1,0 +1,143 @@
+@page "/items"
+@inject ItemsApiClient Api
+
+<PageTitle>Items</PageTitle>
+
+<div data-testid="items-page">
+    <h1>Items</h1>
+
+    @if (_loading)
+    {
+        <p data-testid="items-loading">Loading items…</p>
+    }
+    else if (_errorMessage is not null)
+    {
+        <p data-testid="items-error" class="text-danger">Failed to load items (HTTP @_errorStatusCode): @_errorMessage</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <p data-testid="items-empty">No items yet.</p>
+    }
+    else
+    {
+        <ul data-testid="items-list" class="list-group mb-3">
+            @foreach (var item in _items)
+            {
+                <li data-testid="item-row" data-item-id="@item.Id" class="list-group-item d-flex justify-content-between align-items-start">
+                    <div>
+                        <div data-testid="item-name">@item.Name</div>
+                        @if (!string.IsNullOrWhiteSpace(item.Description))
+                        {
+                            <div data-testid="item-description" class="text-muted">@item.Description</div>
+                        }
+                    </div>
+                    <button type="button" data-testid="item-delete-button" class="btn btn-outline-danger btn-sm" @onclick="() => DeleteAsync(item.Id)">Delete</button>
+                </li>
+            }
+        </ul>
+    }
+
+    <hr />
+
+    <h2>Add item</h2>
+    <div class="mb-3">
+        <label for="item-name-input">Name</label>
+        <input id="item-name-input" data-testid="item-name-input" class="form-control" value="@_name" @oninput="OnNameInput" />
+    </div>
+    <div class="mb-3">
+        <label for="item-description-input">Description</label>
+        <input id="item-description-input" data-testid="item-description-input" class="form-control" value="@_description" @oninput="OnDescriptionInput" />
+    </div>
+    @if (_validationError is not null)
+    {
+        <p data-testid="item-validation-error" class="text-danger">@_validationError</p>
+    }
+    <button type="button" data-testid="item-add-button" class="btn btn-primary" @onclick="CreateAsync">Add item</button>
+</div>
+
+@code {
+    private const int MaxNameLength = 100;
+
+    private List<Item> _items = [];
+    private bool _loading = true;
+    private string? _errorMessage;
+    private int? _errorStatusCode;
+    private string _name = string.Empty;
+    private string? _description;
+    private string? _validationError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private void OnNameInput(ChangeEventArgs e) => _name = e.Value?.ToString() ?? string.Empty;
+
+    private void OnDescriptionInput(ChangeEventArgs e) => _description = e.Value?.ToString();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _errorMessage = null;
+        _errorStatusCode = null;
+
+        try
+        {
+            _items = await Api.GetItemsAsync();
+        }
+        catch (ApiException ex)
+        {
+            SetError(ex);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _validationError = null;
+        var trimmedName = _name.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmedName))
+        {
+            _validationError = "Name is required.";
+            return;
+        }
+
+        if (trimmedName.Length > MaxNameLength)
+        {
+            _validationError = $"Name must be {MaxNameLength} characters or fewer.";
+            return;
+        }
+
+        try
+        {
+            await Api.CreateItemAsync(new CreateItemRequest { Name = trimmedName, Description = _description });
+            _name = string.Empty;
+            _description = null;
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            SetError(ex);
+        }
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        try
+        {
+            await Api.DeleteItemAsync(id);
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            SetError(ex);
+        }
+    }
+
+    private void SetError(ApiException ex)
+    {
+        _errorStatusCode = ex.StatusCode;
+        _errorMessage = ex.Message;
+    }
+}

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AzureFunctionsVersion>V4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.29.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.52.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http" Version="3.3.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Http.AspNetCore" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\App.Core\App.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

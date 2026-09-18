@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="Blazor SWA Starter — a generic starter for Blazor WASM + Azure Functions on Azure Static Web Apps" />
+    <meta name="theme-color" content="#0d6efd" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Blazor SWA Starter" />
+    <title>Blazor SWA Starter</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="App.Web.styles.css" rel="stylesheet" />
+    <link href="manifest.webmanifest" rel="manifest" />
+    <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js', { scope: './' })
+                .then(registration => {
+                    console.log('Service Worker registered with scope:', registration.scope);
+
+                    setInterval(() => {
+                        registration.update();
+                    }, 60000);
+
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (confirm('New version available! Reload to update?')) {
+                                    window.location.reload();
+                                }
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Service Worker registration failed:', error);
+                });
+        }
+    </script>
+</body>
+
+</html>

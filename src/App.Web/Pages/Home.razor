@@ -1,0 +1,21 @@
+@page "/"
+@inject ItemsApiClient Api
+
+<PageTitle>Blazor SWA Starter</PageTitle>
+
+<div data-testid="home-page">
+    <h1>Blazor SWA Starter</h1>
+    <p>A generic starter for a Blazor WebAssembly PWA backed by an Azure Functions isolated-worker API on Azure Static Web Apps.</p>
+    <p>
+        API health: <strong data-testid="api-health">@(_health is null ? "checking" : _health.Value ? "ok" : "unavailable")</strong>
+    </p>
+</div>
+
+@code {
+    private bool? _health;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _health = await Api.CheckHealthAsync();
+    }
+}
