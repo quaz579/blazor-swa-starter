@@ -17,8 +17,17 @@ agents_dir="$repo_root/agents"
 out_dir="$repo_root/.claude/agents"
 
 check_mode=false
-if [[ "${1:-}" == "--check" ]]; then
-  check_mode=true
+case "${1:-}" in
+  "") ;;
+  --check) check_mode=true ;;
+  *)
+    echo "usage: $(basename "$0") [--check]" >&2
+    exit 2
+    ;;
+esac
+if [[ $# -gt 1 ]]; then
+  echo "usage: $(basename "$0") [--check]" >&2
+  exit 2
 fi
 
 fail() {
@@ -40,7 +49,9 @@ tools_for_capabilities() {
     out+=("${chrome_tools[@]}")
   fi
   local joined="" t
-  for t in "${out[@]}"; do
+  # bash 3.2 (macOS's shipped bash) throws "unbound variable" under `set -u` when expanding
+  # an empty array directly; the `+"${out[@]}"` idiom substitutes nothing instead of erroring.
+  for t in "${out[@]+"${out[@]}"}"; do
     joined+="${joined:+, }$t"
   done
   echo "$joined"
@@ -71,8 +82,14 @@ generate_one() {
   [[ "$name" == "$base" ]] || fail "$src: name '$name' does not match filename '$base.md'"
 
   caps_norm="$(tr -d ' ' <<<"$caps_raw")"
+  # An empty list (`capabilities: []`) is not a legal role contract — a role that can touch
+  # nothing can't do its job — so reject it here rather than let it silently produce a role
+  # with no tools at all.
+  [[ -n "$caps_norm" ]] || fail "$src:4: capabilities list must not be empty"
+  local -a cap_list=()
   IFS=',' read -r -a cap_list <<<"$caps_norm"
-  for c in "${cap_list[@]}"; do
+  local c
+  for c in "${cap_list[@]+"${cap_list[@]}"}"; do
     case "$c" in
       files | shell | browser | azure | github) ;;
       *) fail "$src:4: capability '$c' is not one of files, shell, browser, azure, github" ;;
@@ -112,7 +129,10 @@ main() {
   # Deliberately not `local`: the EXIT trap runs after main() returns, when a local would
   # already be unset under `set -u`.
   target_dir="$(mktemp -d)"
-  trap 'rm -rf "$target_dir"' EXIT
+  # Capture $? before cleanup and re-exit with it explicitly — an EXIT trap's own exit
+  # (implicit or via a bare `rm -rf`) otherwise resets the script's exit status to the
+  # trap's, silently turning a `fail` inside generate_one into a false success.
+  trap 'rc=$?; rm -rf "$target_dir"; exit $rc' EXIT
 
   local src base
   for src in "${srcs[@]}"; do
