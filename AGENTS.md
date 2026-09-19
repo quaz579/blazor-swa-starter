@@ -25,20 +25,27 @@ only; `App.Tests` is the one project allowed to reference all three.
 
 ## Task → agent routing
 
-Route work to the agent whose lane it falls in. Each agent's own file (`.claude/agents/<name>.md`)
+Route work to the agent whose lane it falls in. Each agent's own file (`agents/<name>.md`)
 is the authority on its hard rules — this table is just the dispatch.
 
 | When the task is... | Delegate to |
 |---|---|
-| A new vertical feature: a new domain model, a new Functions endpoint, a new Blazor page/component, "add a CRUD endpoint for X" — with tests at every layer it touches | `.claude/agents/feature-builder.md` |
-| Writing or fixing xunit/bUnit tests, a flaky unit/component test, swapping an assertion or mocking library, measuring test coverage | `.claude/agents/test-engineer.md` |
-| Playwright specs or page objects, seeding Azurite fixtures, starting/stopping the local full-stack dev environment, browser-verifying a deployed PR preview or live URL | `.claude/agents/e2e-validator.md` |
-| Provisioning Azure resources, Terraform (`main.tf`/`variables.tf`/`outputs.tf`/`github.tf`/`bootstrap/`), a GitHub Actions workflow, `staticwebapp.config.json`, `swa-cli.config.json`, the devcontainer, a deployment token/secret, PR preview-environment mechanics | `.claude/agents/swa-infra.md` |
-| Bumping a `.csproj` TargetFramework, upgrading/pinning a NuGet package, creating or editing `global.json`, triaging a bump's build errors, reviewing a package's breaking changes before a major-version adoption | `.claude/agents/dotnet-upgrader.md` |
-| Updating or reconciling root documentation, fixing stale/contradictory setup or deploy instructions, verifying a documented command still runs, removing PR-summary-style narration that leaked into a doc | `.claude/agents/docs-curator.md` |
+| A new vertical feature: a new domain model, a new Functions endpoint, a new Blazor page/component, "add a CRUD endpoint for X" — with tests at every layer it touches | `agents/feature-builder.md` |
+| Writing or fixing xunit/bUnit tests, a flaky unit/component test, swapping an assertion or mocking library, measuring test coverage | `agents/test-engineer.md` |
+| Playwright specs or page objects, seeding Azurite fixtures, starting/stopping the local full-stack dev environment, browser-verifying a deployed PR preview or live URL | `agents/e2e-validator.md` |
+| Provisioning Azure resources, Terraform (`main.tf`/`variables.tf`/`outputs.tf`/`github.tf`/`bootstrap/`), a GitHub Actions workflow, `staticwebapp.config.json`, `swa-cli.config.json`, the devcontainer, a deployment token/secret, PR preview-environment mechanics | `agents/swa-infra.md` |
+| Bumping a `.csproj` TargetFramework, upgrading/pinning a NuGet package, creating or editing `global.json`, triaging a bump's build errors, reviewing a package's breaking changes before a major-version adoption | `agents/dotnet-upgrader.md` |
+| Updating or reconciling root documentation, fixing stale/contradictory setup or deploy instructions, verifying a documented command still runs, removing PR-summary-style narration that leaked into a doc | `agents/docs-curator.md` |
 
 A cold agent should be able to route correctly from this table alone — that is the point of
 having it here instead of leaving routing to guesswork.
+
+`agents/*.md` are the vendor-neutral role contracts and the only files you edit; `.claude/agents/*.md`
+is a generated Claude Code view — regenerate it with `scripts/generate-agent-views.sh` after any
+change under `agents/`. Each role file's `capabilities` front matter draws from a fixed list
+(`files`, `shell`, `browser`, `azure`, `github`); `azure` and `github` are policy markers for which
+roles may touch a subscription or a repo secret, not missing tools — both are reached through
+`shell`.
 
 ## Build / test / run — every command below was run in this repo and observed to work
 
@@ -54,6 +61,7 @@ having it here instead of leaving routing to guesswork.
 | `cd tests && npx playwright test --grep @smoke` | Run only the read-only smoke subset |
 | `bash scripts/validate-environment.sh` | Preflight: tool versions, solution build, free ports, `swa-cli.config.json`/`ports.env` drift, Playwright browser cache |
 | `cd infrastructure/terraform && terraform init / validate / fmt -check -recursive / plan` | Read-only Terraform checks (see `DEPLOY.md` for `apply`) |
+| `scripts/generate-agent-views.sh` / `scripts/generate-agent-views.sh --check` | Regenerate `.claude/agents/*.md` from `agents/*.md`, or verify the generated view is up to date |
 
 See `LOCAL-DEV.md` and `TESTING.md` for the full context around each of these.
 
@@ -81,16 +89,20 @@ blazor-swa-starter/
 ├── tests/                      Playwright E2E: playwright.config.ts, pages/, specs/, helpers/ (incl. the Azurite fixture seeder)
 ├── scripts/                    ports.env plus start/stop for the local and e2e stacks, and validate-environment.sh
 ├── infrastructure/terraform/    provisions every Azure resource and writes the GitHub Actions deploy-token secret
-├── .claude/agents/              the six agents this file routes to
+├── agents/                      the six vendor-neutral role contracts this file routes to
+├── .claude/agents/              generated Claude Code view — do not edit; regenerate with scripts/generate-agent-views.sh
 ├── .devcontainer/               devcontainer.json + setup.sh
 └── .github/workflows/            ci.yml, pr-cleanup.yml, copilot-setup-steps.yml
 ```
 
 ## The one canonical doc rule
 
-There are exactly seven markdown files in this repo: `README.md`, `AGENTS.md`, `DEPLOY.md`,
-`LOCAL-DEV.md`, `TESTING.md`, `CLAUDE.md` (one line, `@AGENTS.md`), and
-`.github/copilot-instructions.md` (a pointer at this file). Every topic has exactly one home —
+There are exactly seven markdown **documentation** files in this repo: `README.md`, `AGENTS.md`,
+`DEPLOY.md`, `LOCAL-DEV.md`, `TESTING.md`, `CLAUDE.md` (one line, `@AGENTS.md`), and
+`.github/copilot-instructions.md` (a pointer at this file). The role contracts under `agents/`
+and their generated view under `.claude/agents/` are not part of this set — they are contracts,
+not docs, so adding or editing a role file doesn't count toward or against the seven. Every topic
+among the seven has exactly one home —
 deployment lives in `DEPLOY.md`, testing in `TESTING.md`, and so on. **New work updates the
 canonical doc for its topic; it never adds a new markdown file.** A prior version of this
 starter had 17 root markdown files with three mutually contradictory deployment stories; the

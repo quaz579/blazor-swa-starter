@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check generated agent views
+        run: scripts/generate-agent-views.sh --check
+
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
