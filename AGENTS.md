@@ -43,7 +43,8 @@ having it here instead of leaving routing to guesswork.
 `agents/*.md` are the vendor-neutral role contracts and the only files you edit; `.claude/agents/*.md`
 is a generated Claude Code view — regenerate it with `scripts/generate-agent-views.sh` after any
 change under `agents/`. Each role file's `capabilities` front matter draws from a fixed list
-(`files`, `shell`, `browser`, `azure`, `github`); `azure` and `github` are policy markers for which
+(`files`, `shell`, `browser`, `azure`, `github`); `browser` means reach the public web and/or drive
+a browser (there's no separate `web` member). `azure` and `github` are policy markers for which
 roles may touch a subscription or a repo secret, not missing tools — both are reached through
 `shell`.
 
