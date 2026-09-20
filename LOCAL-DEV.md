@@ -8,8 +8,8 @@
 - [SWA CLI](https://azure.github.io/static-web-apps-cli/) (`npm i -g @azure/static-web-apps-cli`)
 - Azurite **>= 3.37.0** — `Azure.Storage.Blobs` 12.29.2 (used by `App.Api`) negotiates Storage
   REST API version `2026-06-06`; older Azurite builds reject that version and every blob call
-  fails. The start scripts pin this for you (`npx azurite@^3.37.0`), so it matters mainly if you
-  run a standalone Azurite yourself.
+  fails. The start scripts pin this for you (a global `azurite` install if present, else
+  `npx --yes azurite@^3.37.0`), so it matters mainly if you run a standalone Azurite yourself.
 
 Check all of this at once:
 

@@ -42,8 +42,14 @@ wait_for() {
     i=$((i + 1))
     if [ "$i" -ge "$timeout" ]; then
       echo "ERROR: $name did not become ready within ${timeout}s" >&2
-      [ -f "$log" ] && tail -n 20 "$log" >&2
+      if [ -f "$log" ]; then
+        echo "--- last 20 lines of $log ---" >&2
+        tail -n 20 "$log" >&2
+      fi
       exit 1
+    fi
+    if [ $((i % 10)) -eq 0 ]; then
+      echo "  ...still waiting for $name (${i}s/${timeout}s)"
     fi
     sleep 1
   done
@@ -51,10 +57,19 @@ wait_for() {
 
 echo "Starting E2E test environment..."
 
+# Prefer a globally installed azurite binary (the CI workflow installs one
+# alongside func/swa) so this never blocks on a cold npx download; npx is
+# only a fallback for environments where azurite isn't preinstalled.
+if command -v azurite >/dev/null 2>&1; then
+  azurite_cmd=(azurite)
+else
+  azurite_cmd=(npx --yes azurite@^3.37.0)
+fi
+
 if [ -n "$(listener_pid "$AZURITE_BLOB_PORT")" ]; then
   echo "Azurite already running on port $AZURITE_BLOB_PORT, leaving it alone"
 else
-  npx --yes "azurite@^3.37.0" --silent \
+  "${azurite_cmd[@]}" --silent \
     --location "$AZURITE_DATA_DIR" \
     --blobPort "$AZURITE_BLOB_PORT" \
     --queuePort "$AZURITE_QUEUE_PORT" \
@@ -62,7 +77,7 @@ else
     > "$LOG_DIR/azurite-e2e.log" 2>&1 &
   azurite_pid=$!
   record_pid "azurite" "$azurite_pid" "$AZURITE_BLOB_PORT"
-  wait_for "Azurite" 30 "$LOG_DIR/azurite-e2e.log" port_responds "http://127.0.0.1:$AZURITE_BLOB_PORT/"
+  wait_for "Azurite" 120 "$LOG_DIR/azurite-e2e.log" port_responds "http://127.0.0.1:$AZURITE_BLOB_PORT/"
   echo "Azurite started (pid $azurite_pid) - http://127.0.0.1:$AZURITE_BLOB_PORT"
 fi
 
