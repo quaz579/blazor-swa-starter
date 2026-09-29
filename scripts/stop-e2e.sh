@@ -20,15 +20,26 @@ listener_pids() {
   lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true
 }
 
+group_alive() {
+  kill -0 -- "-$1" 2>/dev/null
+}
+
+kill_tree() {
+  kill "-$2" -- "-$1" 2>/dev/null || true
+  kill "-$2" "$1" 2>/dev/null || true
+}
+
 while IFS=: read -r name pid port; do
   [ -z "${pid:-}" ] && continue
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
+  if kill -0 "$pid" 2>/dev/null || group_alive "$pid"; then
+    kill_tree "$pid" TERM
     for _ in 1 2 3 4 5; do
-      kill -0 "$pid" 2>/dev/null || break
+      kill -0 "$pid" 2>/dev/null || group_alive "$pid" || break
       sleep 1
     done
-    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    if kill -0 "$pid" 2>/dev/null || group_alive "$pid"; then
+      kill_tree "$pid" KILL
+    fi
     echo "Stopped $name (pid $pid)"
   else
     echo "$name (pid $pid) was not running"
