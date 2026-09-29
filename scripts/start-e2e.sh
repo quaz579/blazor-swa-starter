@@ -5,6 +5,7 @@
 # already listening on its port is left alone. Detaches on success; use
 # stop-e2e.sh to tear down what this script started.
 set -euo pipefail
+set -m
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./ports.env

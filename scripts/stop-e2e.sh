@@ -20,15 +20,34 @@ listener_pids() {
   lsof -nP -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true
 }
 
+OWN_PGID="$(ps -o pgid= -p $$ | tr -d ' ')"
+
+group_alive() {
+  [ "$1" != "$OWN_PGID" ] && kill -0 -- "-$1" 2>/dev/null
+}
+
+kill_tree() {
+  if [ "$1" != "$OWN_PGID" ]; then
+    kill "-$2" -- "-$1" 2>/dev/null || true
+  fi
+  kill "-$2" "$1" 2>/dev/null || true
+}
+
 while IFS=: read -r name pid port; do
   [ -z "${pid:-}" ] && continue
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
+  if ! [[ "$pid" =~ ^[0-9]+$ ]] || [ "${#pid}" -gt 9 ] || [ "$pid" -le 1 ]; then
+    echo "Skipping invalid pid entry: $name:$pid"
+    continue
+  fi
+  if kill -0 "$pid" 2>/dev/null || group_alive "$pid"; then
+    kill_tree "$pid" TERM
     for _ in 1 2 3 4 5; do
-      kill -0 "$pid" 2>/dev/null || break
+      kill -0 "$pid" 2>/dev/null || group_alive "$pid" || break
       sleep 1
     done
-    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+    if kill -0 "$pid" 2>/dev/null || group_alive "$pid"; then
+      kill_tree "$pid" KILL
+    fi
     echo "Stopped $name (pid $pid)"
   else
     echo "$name (pid $pid) was not running"
