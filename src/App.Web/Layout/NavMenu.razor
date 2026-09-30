@@ -1,3 +1,6 @@
+@inject PocAuthState Auth
+@implements IDisposable
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">Blazor SWA Starter</a>
@@ -19,6 +22,20 @@
                 <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Items
             </NavLink>
         </div>
+        @if (Auth.Enabled)
+        {
+            <div class="nav-item px-3">
+                @if (Auth.IsSignedIn)
+                {
+                    <span class="nav-link" data-testid="nav-user">@Auth.User!.Username</span>
+                    <button type="button" class="nav-link btn btn-link" data-testid="nav-logout" @onclick="LogoutAsync" @onclick:stopPropagation="true">Sign out</button>
+                }
+                else
+                {
+                    <NavLink class="nav-link" href="login" data-testid="nav-login">Sign in</NavLink>
+                }
+            </div>
+        }
     </nav>
 </div>
 
@@ -26,6 +43,18 @@
     private bool collapseNavMenu = true;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnAuthChanged;
+        await Auth.InitializeAsync();
+    }
+
+    private async Task LogoutAsync() => await Auth.LogoutAsync();
+
+    private void OnAuthChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.Changed -= OnAuthChanged;
 
     private void ToggleNavMenu()
     {

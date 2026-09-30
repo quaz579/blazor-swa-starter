@@ -60,6 +60,11 @@ own `/.auth/login/<provider>` mock form would set, without driving that page. Th
 specs stay unauthenticated and read-only, since they also run against deployed preview
 environments where a login flow would be wrong.
 
+With the opt-in POC auth scaffold enabled (see `AGENTS.md`), `tests/specs/poc-auth.spec.ts`
+logs in as the fixture user through `loginAs` and hits a gated endpoint without writing data;
+`loginAsAuthenticatedUser` also signs in so the write specs keep working. With it disabled,
+`poc-auth-disabled.spec.ts` asserts the endpoints are inert and the auth specs skip.
+
 Run only the read-only smoke subset (the only tests safe against a deployed preview or live
 URL — see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 

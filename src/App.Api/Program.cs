@@ -1,4 +1,5 @@
 using System.Text.Json;
+using App.Api.PocAuth;
 using App.Api.Storage;
 using App.Core.Models;
 using Azure.Core.Serialization;
@@ -20,6 +21,7 @@ var host = new HostBuilder()
         });
 
         services.AddBlobJsonStore<Item>("items");
+        services.AddPocAuth();
     })
     .Build();
 

@@ -1,5 +1,6 @@
 import { BrowserContext } from '@playwright/test';
 import { ports } from './ports';
+import { loginAs, pocAuthEnabled } from './poc-auth';
 
 /**
  * With no `auth` block in staticwebapp.config.json, the SWA CLI emulator
@@ -44,4 +45,10 @@ export async function loginAsAuthenticatedUser(
       url: `http://localhost:${ports.SWA_PORT}`,
     },
   ]);
+
+  if (pocAuthEnabled()) {
+    const page = await context.newPage();
+    await loginAs(page);
+    await page.close();
+  }
 }

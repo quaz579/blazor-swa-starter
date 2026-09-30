@@ -1,0 +1,85 @@
+@page "/login"
+@inject PocAuthState Auth
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Sign in</PageTitle>
+
+@if (Auth.Enabled)
+{
+    <div data-testid="login-page">
+        <h1>Sign in</h1>
+
+        @if (Auth.IsSignedIn)
+        {
+            <p data-testid="login-signed-in">Signed in as <strong>@Auth.User!.Username</strong>.</p>
+        }
+        else
+        {
+            <EditForm Model="_form" OnSubmit="SubmitAsync" FormName="login">
+                <div class="mb-3">
+                    <label for="login-username" class="form-label">Email or username</label>
+                    <InputText id="login-username" class="form-control" data-testid="login-username" @bind-Value="_form.Username" autocomplete="username" />
+                </div>
+                <div class="mb-3">
+                    <label for="login-password" class="form-label">Password</label>
+                    <InputText id="login-password" type="password" class="form-control" data-testid="login-password" @bind-Value="_form.Password" autocomplete="current-password" />
+                </div>
+                @if (_error is not null)
+                {
+                    <div class="alert alert-danger" role="alert" data-testid="login-error">@_error</div>
+                }
+                <button type="submit" class="btn btn-primary" data-testid="login-submit" disabled="@_busy">Sign in</button>
+            </EditForm>
+        }
+    </div>
+}
+
+@code {
+    private readonly LoginForm _form = new();
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnChanged;
+        await Auth.InitializeAsync();
+        if (!Auth.Enabled)
+        {
+            Navigation.NavigateTo("");
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            _error = await Auth.LoginAsync(_form.Username.Trim(), _form.Password);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Could not reach the API.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+
+        if (_error is null)
+        {
+            Navigation.NavigateTo("");
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.Changed -= OnChanged;
+
+    private sealed class LoginForm
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+}

@@ -2,6 +2,7 @@ using App.Web;
 using App.Web.Services;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Microsoft.JSInterop;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<AppRoot>("#app");
@@ -11,5 +12,9 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.
 
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 builder.Services.AddScoped<ItemsApiClient>();
+builder.Services.AddScoped(sp => new PocAuthState(
+    sp.GetRequiredService<HttpClient>(),
+    sp.GetRequiredService<IJSRuntime>(),
+    builder.Configuration.GetValue<bool>("PocAuth:Enabled")));
 
 await builder.Build().RunAsync();

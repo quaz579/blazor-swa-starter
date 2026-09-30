@@ -66,6 +66,29 @@ roles may touch a subscription or a repo secret, not missing tools — both are 
 
 See `LOCAL-DEV.md` and `TESTING.md` for the full context around each of these.
 
+## Opt-in POC auth scaffold
+
+Inert by default: with no seed and no flag, `/api/auth/*` returns 404, the Blazor sign-in UI is
+hidden, and every route behaves as before. It turns on when `tests/helpers/factory-poc-auth.json`
+exists and `node scripts/enable-poc-auth.mjs` has run (it writes
+`src/App.Api/PocAuth/PocAuthSeed.g.cs`, sets `PocAuth:Enabled` in
+`src/App.Web/wwwroot/appsettings.json`, and removes the `allowedRoles` routes). The API also honors the `POC_AUTH_ENABLED=true` app
+setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
+
+- Users live in Table Storage (`pocusers`): PBKDF2-SHA512, 220,000 iterations, per-user salt,
+  iteration count stored per row. Seeded idempotently on first use from `PocAuthSeed.g.cs`.
+- `POST /api/auth/login` `{username,password}` -> 200 `{username,roles}` + `poc_session` cookie
+  (HttpOnly, SameSite=Lax, Secure only over HTTPS), 400 bad body, 401 bad credentials.
+  `POST /api/auth/logout` -> 204 + `Max-Age=0`. `GET /api/auth/me` -> 200 or 401.
+  `GET /api/health` stays anonymous.
+- Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; `POST`/`DELETE`
+  `/api/items` are already gated when enabled. The enable script also drops the `allowedRoles`
+  routes from `staticwebapp.config.json`, which would otherwise 401 sessions before the API sees them.
+- Write response bodies with `WriteAsJsonAsync`/`WriteStringAsync` only.
+- Specs: `tests/specs/poc-auth.spec.ts` skips itself without the fixture; `loginAs(page, user)` in
+  `tests/helpers/poc-auth.ts` works against the SWA emulator and a deployed `BASE_URL`.
+- Fixture shape: `{"users":[{"username","password","displayName?","roles":[...]}]}`.
+
 ## TDD expectation and test naming
 
 Every layer a change touches gets a test at that layer before the change is considered done —
@@ -88,7 +111,7 @@ blazor-swa-starter/
 ├── src/App.Web/                Blazor WebAssembly PWA
 ├── src/App.Tests/               xunit + bUnit + NSubstitute + AwesomeAssertions, mirroring Core/Api/Web
 ├── tests/                      Playwright E2E: playwright.config.ts, pages/, specs/, helpers/ (incl. the Azurite fixture seeder)
-├── scripts/                    ports.env plus start/stop for the local and e2e stacks, and validate-environment.sh
+├── scripts/                    ports.env plus start/stop for the local and e2e stacks, validate-environment.sh, enable-poc-auth.mjs
 ├── infrastructure/terraform/    provisions every Azure resource and writes the GitHub Actions deploy-token secret
 ├── agents/                      the six vendor-neutral role contracts this file routes to
 ├── .claude/agents/              generated Claude Code view — do not edit; regenerate with scripts/generate-agent-views.sh
