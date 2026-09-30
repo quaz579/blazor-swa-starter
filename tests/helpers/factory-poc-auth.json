@@ -1,0 +1,6 @@
+{
+  "users": [
+    { "username": "probe@leadingedje.com", "displayName": "probe@leadingedje.com", "password": "Ch@nageM3", "roles": ["authenticated"] },
+    { "username": "admin", "displayName": "admin", "password": "Ch@nageM3", "roles": ["authenticated", "admin"] }
+  ]
+}
