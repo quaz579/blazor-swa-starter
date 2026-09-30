@@ -8,16 +8,6 @@
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate"
       }
-    },
-    {
-      "route": "/api/items",
-      "methods": ["POST"],
-      "allowedRoles": ["authenticated"]
-    },
-    {
-      "route": "/api/items/*",
-      "methods": ["DELETE"],
-      "allowedRoles": ["authenticated"]
     }
   ],
   "navigationFallback": {
