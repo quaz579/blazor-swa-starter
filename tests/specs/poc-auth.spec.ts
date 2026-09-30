@@ -42,6 +42,19 @@ test.describe('POC auth', () => {
     expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(401);
   });
 
+  test('a session created through the loginAs API helper shows the UI signed in after a reload', { tag: '@smoke' }, async ({ page }) => {
+    const user = await loginAs(page);
+
+    await page.goto('/');
+    await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+    await page.reload();
+    await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+
+    await page.goto('/items');
+    await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+    await expect(page.getByTestId('nav-login')).toHaveCount(0);
+  });
+
   test('signing in through the login page shows the user in the nav', { tag: '@smoke' }, async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');

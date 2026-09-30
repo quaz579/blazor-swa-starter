@@ -17,7 +17,7 @@ public sealed class PocAuthStateTests : TestContext
             seen.Add($"{req.Method} {req.RequestUri!.AbsolutePath}");
             return handle(req);
         })) { BaseAddress = new Uri("https://api.test/") };
-        return new PocAuthState(http, JSInterop.JSRuntime, enabled);
+        return new PocAuthState(http, enabled);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
@@ -36,20 +36,42 @@ public sealed class PocAuthStateTests : TestContext
     }
 
     [Fact]
-    public async Task Initialize_WhenEnabledWithoutSignedInHint_DoesNotCallMe()
+    public async Task Initialize_WhenEnabled_ProbesMeWithNoLocalHintAndAdoptsTheServerSession()
     {
-        JSInterop.Setup<string?>("localStorage.getItem", "poc_signed_in").SetResult(null);
-        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{}")), out var requests);
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[\"admin\"]}")), out var requests);
 
         await state.InitializeAsync();
 
-        requests.Should().BeEmpty();
+        requests.Should().Equal("GET /api/auth/me");
+        state.User!.Username.Should().Be("admin");
+    }
+
+    [Fact]
+    public async Task Initialize_WhenMeIs401_StaysSignedOut()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.Unauthorized, "{}")), out _);
+
+        await state.InitializeAsync();
+
+        state.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Initialize_WhenMeFailsOrTimesOut_StaysSignedOutWithoutThrowing()
+    {
+        var failing = Create(true, _ => throw new HttpRequestException("down"), out _);
+        var slow = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
+
+        await failing.InitializeAsync();
+        await slow.InitializeAsync();
+
+        failing.IsSignedIn.Should().BeFalse();
+        slow.IsSignedIn.Should().BeFalse();
     }
 
     [Fact]
     public async Task Login_Success_SetsUser()
     {
-        JSInterop.SetupVoid("localStorage.setItem", _ => true).SetVoidResult();
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[\"admin\"]}")), out _);
 
         var error = await state.LoginAsync("admin", "Ch@nageM3");
@@ -73,7 +95,6 @@ public sealed class PocAuthStateTests : TestContext
     [Fact]
     public async Task Logout_WhenTheRequestTimesOut_StillSignsOutLocally()
     {
-        JSInterop.SetupVoid("localStorage.removeItem", _ => true).SetVoidResult();
         var state = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
 
         await state.LogoutAsync();

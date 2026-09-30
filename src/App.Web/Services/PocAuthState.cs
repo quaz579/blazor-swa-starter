@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Microsoft.JSInterop;
 
 namespace App.Web.Services;
 
@@ -9,16 +8,14 @@ public sealed record PocUser(string Username, string[] Roles);
 
 public sealed class PocAuthState
 {
-    private const string SignedInHintKey = "poc_signed_in";
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly HttpClient _http;
-    private readonly IJSRuntime _js;
     private bool _initialized;
 
-    public PocAuthState(HttpClient http, IJSRuntime js, bool enabled)
+    public PocAuthState(HttpClient http, bool enabled)
     {
         _http = http;
-        _js = js;
         Enabled = enabled;
     }
 
@@ -38,18 +35,9 @@ public sealed class PocAuthState
         }
 
         _initialized = true;
-        var hint = await _js.InvokeAsync<string?>("localStorage.getItem", cancellationToken, SignedInHintKey);
-        if (hint is null)
-        {
-            return;
-        }
-
-        User = await FetchMeAsync(cancellationToken);
-        if (User is null)
-        {
-            await _js.InvokeVoidAsync("localStorage.removeItem", cancellationToken, SignedInHintKey);
-        }
-
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ProbeTimeout);
+        User = await FetchMeAsync(timeout.Token);
         Changed?.Invoke();
     }
 
@@ -80,7 +68,6 @@ public sealed class PocAuthState
             return "Sign-in failed: the API returned an unexpected response.";
         }
 
-        await _js.InvokeVoidAsync("localStorage.setItem", cancellationToken, SignedInHintKey, "1");
         Changed?.Invoke();
         return null;
     }
@@ -96,7 +83,6 @@ public sealed class PocAuthState
         }
 
         User = null;
-        await _js.InvokeVoidAsync("localStorage.removeItem", cancellationToken, SignedInHintKey);
         Changed?.Invoke();
     }
 
