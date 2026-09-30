@@ -14,7 +14,9 @@ test.describe('POC auth', () => {
   });
 
   test('anonymous requests are rejected and a wrong password is refused', { tag: '@smoke' }, async ({ request }) => {
-    expect((await request.get('/api/auth/me')).status()).toBe(401);
+    const anonymousMe = await request.get('/api/auth/me');
+    expect(anonymousMe.status()).toBe(200);
+    expect(await anonymousMe.json()).toEqual({ authenticated: false });
     expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(401);
 
     const user = pocUser();
@@ -33,13 +35,26 @@ test.describe('POC auth', () => {
 
     const me = await request.get('/api/auth/me');
     expect(me.status()).toBe(200);
-    expect((await me.json()).username).toBe(user.username);
+    expect(await me.json()).toMatchObject({ authenticated: true, username: user.username });
 
     expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(404);
 
     expect((await request.post('/api/auth/logout')).status()).toBe(204);
-    expect((await request.get('/api/auth/me')).status()).toBe(401);
+    expect(await (await request.get('/api/auth/me')).json()).toEqual({ authenticated: false });
     expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(401);
+  });
+
+  test('signed-out page loads produce zero console errors', { tag: '@smoke' }, async ({ page }) => {
+    const problems: string[] = [];
+    page.on('console', (message) => message.type() === 'error' && problems.push(message.text()));
+    page.on('pageerror', (error) => problems.push(String(error)));
+
+    for (const path of ['/', '/login', '/items']) {
+      await page.goto(path);
+      await expect(page.getByTestId('nav-login')).toBeVisible();
+    }
+
+    expect(problems).toEqual([]);
   });
 
   test('a session created through the loginAs API helper shows the UI signed in after a reload', { tag: '@smoke' }, async ({ page }) => {

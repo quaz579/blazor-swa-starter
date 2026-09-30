@@ -77,15 +77,18 @@ public sealed class AuthFunctionTests : IDisposable
     }
 
     [Fact]
-    public async Task Me_WithoutCookie_Returns401()
+    public async Task Me_WithoutCookie_Returns200AuthenticatedFalse()
     {
         var response = await _function.Me(TestHttpRequestData.CreateRequest(url: "http://localhost/api/auth/me"), CancellationToken.None);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("authenticated").GetBoolean().Should().BeFalse();
+        body.RootElement.TryGetProperty("username", out _).Should().BeFalse();
     }
 
     [Fact]
-    public async Task Me_WithSessionCookie_Returns200_AndAfterLogoutReturns401WithExpiredCookie()
+    public async Task Me_WithSessionCookie_ReturnsAuthenticatedTrue_AndAfterLogoutAuthenticatedFalse()
     {
         var login = await _function.Login(TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/login", new { username = "requester@example.com", password = "Ch@nageM3" }), CancellationToken.None);
         var token = TokenFrom(SetCookie(login));
@@ -94,6 +97,12 @@ public sealed class AuthFunctionTests : IDisposable
         meReq.Headers.Add("Cookie", $"other=1; poc_session={token}");
         var me = await _function.Me(meReq, CancellationToken.None);
         me.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var meBody = await TestHttpRequestData.ReadBodyAsJsonAsync(me))
+        {
+            meBody.RootElement.GetProperty("authenticated").GetBoolean().Should().BeTrue();
+            meBody.RootElement.GetProperty("username").GetString().Should().Be("requester@example.com");
+            meBody.RootElement.GetProperty("roles")[0].GetString().Should().Be("user");
+        }
 
         var logoutReq = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/logout");
         logoutReq.Headers.Add("Cookie", $"poc_session={token}");
@@ -103,7 +112,10 @@ public sealed class AuthFunctionTests : IDisposable
 
         var again = TestHttpRequestData.CreateRequest(url: "http://localhost/api/auth/me");
         again.Headers.Add("Cookie", $"poc_session={token}");
-        (await _function.Me(again, CancellationToken.None)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var afterLogout = await _function.Me(again, CancellationToken.None);
+        afterLogout.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var afterBody = await TestHttpRequestData.ReadBodyAsJsonAsync(afterLogout);
+        afterBody.RootElement.GetProperty("authenticated").GetBoolean().Should().BeFalse();
     }
 
     [Fact]

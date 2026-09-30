@@ -6,6 +6,8 @@ namespace App.Web.Services;
 
 public sealed record PocUser(string Username, string[] Roles);
 
+internal sealed record MeResponse(bool Authenticated, string? Username, string[]? Roles);
+
 public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
@@ -91,8 +93,14 @@ public sealed class PocAuthState
         try
         {
             using var response = await _http.GetAsync("api/auth/me", cancellationToken);
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken)
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken: cancellationToken);
+            return me is { Authenticated: true, Username: not null }
+                ? new PocUser(me.Username, me.Roles ?? [])
                 : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)

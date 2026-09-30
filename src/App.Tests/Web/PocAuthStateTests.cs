@@ -38,7 +38,7 @@ public sealed class PocAuthStateTests : TestContext
     [Fact]
     public async Task Initialize_WhenEnabled_ProbesMeWithNoLocalHintAndAdoptsTheServerSession()
     {
-        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[\"admin\"]}")), out var requests);
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\"admin\"]}")), out var requests);
 
         await state.InitializeAsync();
 
@@ -47,9 +47,19 @@ public sealed class PocAuthStateTests : TestContext
     }
 
     [Fact]
-    public async Task Initialize_WhenMeIs401_StaysSignedOut()
+    public async Task Initialize_WhenMeSaysNotAuthenticated_StaysSignedOut()
     {
-        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.Unauthorized, "{}")), out _);
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"authenticated\":false}")), out _);
+
+        await state.InitializeAsync();
+
+        state.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Initialize_WhenMeReturnsAnErrorStatus_StaysSignedOut()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.InternalServerError, "{}")), out _);
 
         await state.InitializeAsync();
 

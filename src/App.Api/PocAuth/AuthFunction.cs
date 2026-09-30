@@ -94,13 +94,14 @@ public sealed class AuthFunction
         }
 
         var principal = await _auth.GetPrincipalAsync(req, cancellationToken);
+        var response = req.CreateResponse(HttpStatusCode.OK);
         if (principal is null)
         {
-            return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
+            await response.WriteAsJsonAsync(new { authenticated = false }, cancellationToken);
+            return response;
         }
 
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { username = principal.Username, roles = principal.Roles }, cancellationToken);
+        await response.WriteAsJsonAsync(new { authenticated = true, username = principal.Username, roles = principal.Roles }, cancellationToken);
         return response;
     }
 

@@ -79,7 +79,7 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
   iteration count stored per row. Seeded idempotently on first use from `PocAuthSeed.g.cs`.
 - `POST /api/auth/login` `{username,password}` -> 200 `{username,roles}` + `poc_session` cookie
   (HttpOnly, SameSite=Lax, Secure only over HTTPS), 400 bad body, 401 bad credentials.
-  `POST /api/auth/logout` -> 204 + `Max-Age=0`. `GET /api/auth/me` -> 200 or 401.
+  `POST /api/auth/logout` -> 204 + `Max-Age=0`. `GET /api/auth/me` -> always 200, `{"authenticated":false}` or `{"authenticated":true,"username","roles"}`; only gated endpoints return 401.
   `GET /api/health` stays anonymous.
 - Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; `POST`/`DELETE`
   `/api/items` are already gated when enabled. The enable script also drops the `allowedRoles`
