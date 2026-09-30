@@ -1,0 +1,22 @@
+{
+  "note": "POC demo credentials for local and preview testing only. These are not secrets; the real product must replace this auth before production.",
+  "users": [
+    {
+      "username": "requester@example.com",
+      "displayName": "Requester",
+      "password": "Ch@nageM3",
+      "roles": [
+        "user"
+      ]
+    },
+    {
+      "username": "admin",
+      "displayName": "Admin",
+      "password": "Ch@nageM3",
+      "roles": [
+        "admin",
+        "user"
+      ]
+    }
+  ]
+}

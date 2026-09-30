@@ -71,6 +71,17 @@ public sealed class PocAuthStateTests : TestContext
     }
 
     [Fact]
+    public async Task Logout_WhenTheRequestTimesOut_StillSignsOutLocally()
+    {
+        JSInterop.SetupVoid("localStorage.removeItem", _ => true).SetVoidResult();
+        var state = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
+
+        await state.LogoutAsync();
+
+        state.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Login_MalformedBody_ReturnsMessageInsteadOfThrowing()
     {
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{not json")), out _);

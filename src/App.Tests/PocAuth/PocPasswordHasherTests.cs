@@ -63,6 +63,12 @@ public sealed class PocPasswordHasherTests
     }
 
     [Fact]
+    public void Verify_MalformedStoredHashOrSalt_ReturnsFalseInsteadOfThrowing()
+    {
+        PocPasswordHasher.Verify("pw", "not base64!!", "also not base64!!", 220_000).Should().BeFalse();
+    }
+
+    [Fact]
     public void Verify_HonorsTheIterationCountStoredPerRow()
     {
         var (salt, hash, _) = PocPasswordHasher.Hash("Ch@nageM3", iterations: 1_000);

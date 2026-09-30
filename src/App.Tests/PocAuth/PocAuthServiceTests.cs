@@ -126,6 +126,32 @@ public sealed class PocAuthServiceTests
         https.Should().Contain("; Secure");
     }
 
+    [Theory]
+    [InlineData("http://localhost/api/x", null, false)]
+    [InlineData("http://localhost/api/x", "https", true)]
+    [InlineData("http://localhost/api/x", "https, http", true)]
+    [InlineData("http://localhost/api/x", "http, https", false)]
+    [InlineData("https://localhost/api/x", null, true)]
+    [InlineData("https://localhost/api/x", "http", true)]
+    public void IsHttps_EitherSchemeOrForwardedProtoCounts(string url, string? forwardedProto, bool expected)
+    {
+        var req = Functions.TestHttpRequestData.CreateRequest(url: url);
+        if (forwardedProto is not null)
+        {
+            req.Headers.Add("X-Forwarded-Proto", forwardedProto);
+        }
+
+        PocAuthService.IsHttps(req).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Authenticate_UserWithMalformedStoredHash_ReturnsNull()
+    {
+        _store.Users["bad"] = new PocUserEntity { RowKey = "bad", Username = "bad", Salt = "%%%", PasswordHash = "%%%", Iterations = 1_000 };
+
+        (await CreateService().AuthenticateAsync("bad", "pw")).Should().BeNull();
+    }
+
     [Fact]
     public void BuildClearedCookie_UsesMaxAgeZero()
     {

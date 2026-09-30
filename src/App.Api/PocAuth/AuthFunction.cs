@@ -52,6 +52,7 @@ public sealed class AuthFunction
         var principal = await _auth.AuthenticateAsync(request.Username, request.Password, cancellationToken);
         if (principal is null)
         {
+            _logger.LogWarning("Rejected login attempt");
             var denied = req.CreateResponse(HttpStatusCode.Unauthorized);
             await denied.WriteAsJsonAsync(new { error = "Invalid username or password." }, cancellationToken);
             return denied;

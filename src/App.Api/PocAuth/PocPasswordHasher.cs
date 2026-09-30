@@ -26,8 +26,15 @@ public static class PocPasswordHasher
             return false;
         }
 
-        var expected = Convert.FromBase64String(hashBase64);
-        var actual = Derive(password, Convert.FromBase64String(saltBase64), iterations);
-        return CryptographicOperations.FixedTimeEquals(expected, actual);
+        try
+        {
+            var expected = Convert.FromBase64String(hashBase64);
+            var actual = Derive(password, Convert.FromBase64String(saltBase64), iterations);
+            return CryptographicOperations.FixedTimeEquals(expected, actual);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 }

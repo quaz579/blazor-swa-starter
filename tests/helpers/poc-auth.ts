@@ -18,8 +18,13 @@ export function loadPocUsers(): PocUser[] {
   return JSON.parse(readFileSync(pocAuthFixturePath, 'utf8')).users ?? [];
 }
 
+const webSettingsPath = resolve(__dirname, '../../src/App.Web/wwwroot/appsettings.json');
+
 export function pocAuthEnabled(): boolean {
-  return loadPocUsers().length > 0;
+  if (loadPocUsers().length === 0 || !existsSync(webSettingsPath)) {
+    return false;
+  }
+  return JSON.parse(readFileSync(webSettingsPath, 'utf8')).PocAuth?.Enabled === true;
 }
 
 export function pocUser(roleOrUsername?: string): PocUser {

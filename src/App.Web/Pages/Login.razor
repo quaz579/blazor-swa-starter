@@ -58,7 +58,7 @@
         {
             _error = await Auth.LoginAsync(_form.Username.Trim(), _form.Password);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
             _error = "Could not reach the API.";
         }

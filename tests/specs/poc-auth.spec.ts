@@ -2,7 +2,11 @@ import { expect, test } from '@playwright/test';
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
 test.describe('POC auth', () => {
-  test.skip(!pocAuthEnabled(), 'POC auth is not enabled (no tests/helpers/factory-poc-auth.json fixture)');
+  test.skip(!pocAuthEnabled(), 'POC auth is not enabled (PocAuth:Enabled is false in appsettings.json)');
+
+  test.afterEach(async ({ page }) => {
+    await page.context().request.post('/api/auth/logout');
+  });
 
   test('health stays anonymous', { tag: '@smoke' }, async ({ request }) => {
     const health = await request.get('/api/health');

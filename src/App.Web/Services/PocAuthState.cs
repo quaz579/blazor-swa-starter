@@ -91,7 +91,7 @@ public sealed class PocAuthState
         {
             using var response = await _http.PostAsync("api/auth/logout", content: null, cancellationToken);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
         }
 
@@ -109,7 +109,7 @@ public sealed class PocAuthState
                 ? await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken)
                 : null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or NotSupportedException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)
         {
             return null;
         }

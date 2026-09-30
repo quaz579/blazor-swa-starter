@@ -173,12 +173,13 @@ public sealed class PocAuthService
 
     public static bool IsHttps(HttpRequestData req)
     {
-        if (req.Headers.TryGetValues("X-Forwarded-Proto", out var proto))
+        if (req.Url.Scheme == Uri.UriSchemeHttps)
         {
-            return proto.Any(v => v.Split(',')[0].Trim().Equals("https", StringComparison.OrdinalIgnoreCase));
+            return true;
         }
 
-        return req.Url.Scheme == Uri.UriSchemeHttps;
+        return req.Headers.TryGetValues("X-Forwarded-Proto", out var proto)
+            && proto.Any(v => v.Split(',')[0].Trim().Equals("https", StringComparison.OrdinalIgnoreCase));
     }
 
     public static string BuildSessionCookie(string token, DateTimeOffset expiresUtc, DateTimeOffset nowUtc, bool secure)
