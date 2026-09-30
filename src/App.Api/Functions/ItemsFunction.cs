@@ -1,4 +1,5 @@
 using System.Net;
+using App.Api.PocAuth;
 using App.Core.Models;
 using App.Core.Storage;
 using Microsoft.Azure.Functions.Worker;
@@ -14,11 +15,28 @@ public sealed class ItemsFunction
 
     private readonly ILogger<ItemsFunction> _logger;
     private readonly IBlobJsonStore<Item> _store;
+    private readonly PocAuthService? _auth;
 
     public ItemsFunction(ILogger<ItemsFunction> logger, IBlobJsonStore<Item> store)
     {
         _logger = logger;
         _store = store;
+    }
+
+    public ItemsFunction(ILogger<ItemsFunction> logger, IBlobJsonStore<Item> store, PocAuthService auth)
+        : this(logger, store)
+    {
+        _auth = auth;
+    }
+
+    private async Task<bool> IsWriteBlockedAsync(HttpRequestData req, CancellationToken cancellationToken)
+    {
+        if (_auth is null || !PocAuthSettings.IsEnabled)
+        {
+            return false;
+        }
+
+        return await _auth.RequireSessionAsync(req, cancellationToken: cancellationToken) is null;
     }
 
     /// <summary>GET /api/items — newest first.</summary>
@@ -92,6 +110,11 @@ public sealed class ItemsFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "items")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
+        if (await IsWriteBlockedAsync(req, cancellationToken))
+        {
+            return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
+        }
+
         CreateItemRequest? request;
         try
         {
@@ -135,6 +158,11 @@ public sealed class ItemsFunction
         string id,
         CancellationToken cancellationToken)
     {
+        if (await IsWriteBlockedAsync(req, cancellationToken))
+        {
+            return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
+        }
+
         bool deleted;
         try
         {

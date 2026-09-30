@@ -11,5 +11,8 @@ var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.
 
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
 builder.Services.AddScoped<ItemsApiClient>();
+builder.Services.AddScoped(sp => new PocAuthState(
+    sp.GetRequiredService<HttpClient>(),
+    builder.Configuration.GetValue<bool>("PocAuth:Enabled")));
 
 await builder.Build().RunAsync();
