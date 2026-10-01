@@ -20,7 +20,7 @@ public sealed class ItemsApiClient
             using var response = await _http.GetAsync("api/health", cancellationToken);
             return response.IsSuccessStatusCode;
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
             return false;
         }

@@ -197,4 +197,57 @@ public sealed class ItemsPageTests : TestContext
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
         deleteCount.Should().Be(1);
     }
+
+    [Fact]
+    public void Items_TransportFailureOnLoad_ShowsInlineErrorWithoutStatusCode()
+    {
+        RegisterApiClient((_, _) => throw new HttpRequestException("connection reset"));
+
+        var cut = RenderComponent<Items>();
+
+        cut.WaitForAssertion(() =>
+        {
+            var error = cut.Find("[data-testid='items-error']").TextContent;
+            error.Should().Contain("Could not reach the API");
+            error.Should().NotContain("HTTP");
+        });
+    }
+
+    [Fact]
+    public void Items_TimeoutOnLoad_ShowsInlineError()
+    {
+        RegisterApiClient((_, _) => throw new TaskCanceledException("timed out"));
+
+        var cut = RenderComponent<Items>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API"));
+    }
+
+    [Fact]
+    public void Items_MalformedBodyOnLoad_ShowsInlineError()
+    {
+        RegisterApiClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{not json", System.Text.Encoding.UTF8, "application/json"),
+        }));
+
+        var cut = RenderComponent<Items>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("unexpected response"));
+    }
+
+    [Fact]
+    public void Items_TransportFailureOnCreate_ShowsInlineError()
+    {
+        RegisterApiClient((req, _) => req.Method == HttpMethod.Post
+            ? throw new HttpRequestException("connection reset")
+            : Task.FromResult(FakeApiResponses.Ok(new List<Item>())));
+        var cut = RenderComponent<Items>();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='item-name-input']").Input("Widget");
+
+        cut.Find("[data-testid='item-add-button']").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API"));
+    }
 }
