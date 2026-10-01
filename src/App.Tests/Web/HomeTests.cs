@@ -44,4 +44,14 @@ public sealed class HomeTests : TestContext
 
         cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable"));
     }
+
+    [Fact]
+    public void Home_HealthCheckTimesOut_ShowsUnavailable()
+    {
+        RegisterApiClient((_, _) => throw new TaskCanceledException("timed out"));
+
+        var cut = RenderComponent<Home>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable"));
+    }
 }

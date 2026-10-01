@@ -1,4 +1,5 @@
 @page "/items"
+@using System.Text.Json
 @inject ItemsApiClient Api
 
 <PageTitle>Items</PageTitle>
@@ -12,7 +13,7 @@
     }
     else if (_errorMessage is not null)
     {
-        <p data-testid="items-error" class="text-danger">Failed to load items (HTTP @_errorStatusCode): @_errorMessage</p>
+        <p data-testid="items-error" class="text-danger">Failed to load items@(_errorStatusCode is null ? "" : $" (HTTP {_errorStatusCode})"): @_errorMessage</p>
     }
     else if (_items.Count == 0)
     {
@@ -87,6 +88,10 @@
         {
             SetError(ex);
         }
+        catch (Exception ex) when (IsTransportFailure(ex))
+        {
+            SetTransportError(ex);
+        }
         finally
         {
             _loading = false;
@@ -127,6 +132,10 @@
         {
             SetError(ex);
         }
+        catch (Exception ex) when (IsTransportFailure(ex))
+        {
+            SetTransportError(ex);
+        }
     }
 
     private async Task DeleteAsync(string id)
@@ -140,6 +149,21 @@
         {
             SetError(ex);
         }
+        catch (Exception ex) when (IsTransportFailure(ex))
+        {
+            SetTransportError(ex);
+        }
+    }
+
+    private static bool IsTransportFailure(Exception ex) =>
+        ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException;
+
+    private void SetTransportError(Exception ex)
+    {
+        _errorStatusCode = null;
+        _errorMessage = ex is JsonException or NotSupportedException
+            ? "The API returned an unexpected response."
+            : "Could not reach the API.";
     }
 
     private void SetError(ApiException ex)
