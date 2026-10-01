@@ -10,9 +10,6 @@ namespace App.Api.Functions;
 
 public sealed class ItemsFunction
 {
-    private const int MaxNameLength = 100;
-    private const int MaxDescriptionLength = 1000;
-
     private readonly ILogger<ItemsFunction> _logger;
     private readonly IBlobJsonStore<Item> _store;
     private readonly PocAuthService? _auth;
@@ -126,7 +123,7 @@ public sealed class ItemsFunction
             request = null;
         }
 
-        var validationError = Validate(request);
+        var validationError = CreateItemRequestValidator.Validate(request);
         if (validationError is not null)
         {
             var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
@@ -197,25 +194,5 @@ public sealed class ItemsFunction
         var response = req.CreateResponse(HttpStatusCode.BadRequest);
         await response.WriteAsJsonAsync(new { error = "Item id must not contain path separators or '..'." }, cancellationToken);
         return response;
-    }
-
-    private static string? Validate(CreateItemRequest? request)
-    {
-        if (request is null || string.IsNullOrWhiteSpace(request.Name))
-        {
-            return "Name is required.";
-        }
-
-        if (request.Name.Trim().Length > MaxNameLength)
-        {
-            return $"Name must be {MaxNameLength} characters or fewer.";
-        }
-
-        if (request.Description is not null && request.Description.Length > MaxDescriptionLength)
-        {
-            return $"Description must be {MaxDescriptionLength} characters or fewer.";
-        }
-
-        return null;
     }
 }

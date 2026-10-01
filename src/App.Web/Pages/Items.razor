@@ -57,9 +57,6 @@
 </div>
 
 @code {
-    private const int MaxNameLength = 100;
-    private const int MaxDescriptionLength = 1000;
-
     private List<Item> _items = [];
     private bool _loading = true;
     private string? _errorMessage;
@@ -100,30 +97,16 @@
 
     private async Task CreateAsync()
     {
-        _validationError = null;
-        var trimmedName = _name.Trim();
-
-        if (string.IsNullOrWhiteSpace(trimmedName))
+        var request = new CreateItemRequest { Name = _name, Description = _description };
+        _validationError = CreateItemRequestValidator.Validate(request);
+        if (_validationError is not null)
         {
-            _validationError = "Name is required.";
-            return;
-        }
-
-        if (trimmedName.Length > MaxNameLength)
-        {
-            _validationError = $"Name must be {MaxNameLength} characters or fewer.";
-            return;
-        }
-
-        if (_description is not null && _description.Length > MaxDescriptionLength)
-        {
-            _validationError = $"Description must be {MaxDescriptionLength} characters or fewer.";
             return;
         }
 
         try
         {
-            await Api.CreateItemAsync(new CreateItemRequest { Name = trimmedName, Description = _description });
+            await Api.CreateItemAsync(new CreateItemRequest { Name = request.Name!.Trim(), Description = _description });
             _name = string.Empty;
             _description = null;
             await LoadAsync();
