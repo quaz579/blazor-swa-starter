@@ -22,6 +22,13 @@ resource "azurerm_resource_group" "main" {
   name     = "rg-${local.resource_prefix}"
   location = var.location
   tags     = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      tags["factory:keep"],
+      tags["factory:ttl"],
+    ]
+  }
 }
 
 resource "azurerm_storage_account" "main" {
