@@ -96,4 +96,33 @@ public sealed class ChangePasswordPageTests : TestContext
         cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("current password is incorrect"));
         cut.Find("[data-testid='change-password-submit']").HasAttribute("disabled").Should().BeFalse();
     }
+
+    [Fact]
+    public void RevocationWarning_ShowsAWarningInsteadOfTheOtherDevicesPromise()
+    {
+        Register(req => Route(req, Json(HttpStatusCode.OK, "{\"warning\":\"Password changed, but other devices could not be signed out.\"}")), out _);
+        var cut = RenderComponent<ChangePassword>();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+
+        Fill(cut, "Ch@nageM3", "Another-pass-9", "Another-pass-9");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-warning']").TextContent.Should().Contain("other devices could not be signed out"));
+        cut.FindAll("[data-testid='change-password-success']").Should().BeEmpty();
+        cut.Markup.Should().NotContain("Other devices are signed out when you change it");
+    }
+
+    [Fact]
+    public void Conflict_ShowsTheServerMessageAndKeepsTheFormUsable()
+    {
+        Register(req => Route(req, Json(HttpStatusCode.Conflict, "{\"error\":\"The password was changed by another request. Enter the new current password and try again.\"}")), out _);
+        var cut = RenderComponent<ChangePassword>();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+
+        Fill(cut, "Ch@nageM3", "Another-pass-9", "Another-pass-9");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("Enter the new current password"));
+        cut.Find("[data-testid='change-password-submit']").HasAttribute("disabled").Should().BeFalse();
+    }
 }

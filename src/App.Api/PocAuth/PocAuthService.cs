@@ -121,7 +121,7 @@ public sealed class PocAuthService
         switch (await _store.UpdatePasswordAsync(user, hash, salt, iterations, cancellationToken))
         {
             case PasswordUpdateResult.Conflict:
-                return new(ChangePasswordResult.Conflict, "The password was changed by another request. Sign in again.");
+                return new(ChangePasswordResult.Conflict, "The password was changed by another request. Enter the new current password and try again.");
             case PasswordUpdateResult.NotFound:
                 return new(ChangePasswordResult.UserNotFound, "Sign in required.");
         }
@@ -135,7 +135,7 @@ public sealed class PocAuthService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new(ChangePasswordResult.Changed, "The password was changed, but other sessions could not be signed out.");
+            return new(ChangePasswordResult.Changed, "Password changed, but other devices could not be signed out.");
         }
 
         return new(ChangePasswordResult.Changed, null);

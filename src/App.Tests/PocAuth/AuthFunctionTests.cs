@@ -182,6 +182,20 @@ public sealed class AuthFunctionTests : IDisposable
     }
 
     [Fact]
+    public async Task ChangePassword_WhenOtherSessionsCannotBeRevoked_Returns200WithAWarningBody()
+    {
+        var token = await SignInAsync();
+        _store.ThrowOnSessionDelete = true;
+
+        var response = await ChangeAsync(token, new { currentPassword = "Ch@nageM3", newPassword = "Brand-new-pass1" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("warning").GetString().Should().Be("Password changed, but other devices could not be signed out.");
+        (await _service.AuthenticateAsync("requester@example.com", "Brand-new-pass1")).Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task ChangePassword_WrongCurrentPassword_Returns400AndKeepsTheOldPassword()
     {
         var token = await SignInAsync();

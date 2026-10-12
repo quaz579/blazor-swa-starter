@@ -265,7 +265,7 @@ public sealed class PocAuthServiceTests
         var outcome = await service.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "Another-pass-9");
 
         outcome.Result.Should().Be(ChangePasswordResult.Changed);
-        outcome.Message.Should().Contain("was changed");
+        outcome.Message.Should().Be("Password changed, but other devices could not be signed out.");
         (await service.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
     }
 }

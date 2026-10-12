@@ -10,9 +10,14 @@ internal sealed record MeResponse(bool Authenticated, string? Username, string[]
 
 internal sealed record ErrorResponse(string? Error);
 
+internal sealed record WarningResponse(string? Warning);
+
+public sealed record PasswordChangeResult(string? Error, string? Warning);
+
 public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+    private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
     private static readonly TimeSpan ChangePasswordTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;
@@ -77,7 +82,7 @@ public sealed class PocAuthState
         return null;
     }
 
-    public async Task<string?> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+    public async Task<PasswordChangeResult> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ChangePasswordTimeout);
@@ -86,26 +91,31 @@ public sealed class PocAuthState
             using var response = await _http.PostAsJsonAsync("api/auth/change-password", new { currentPassword, newPassword }, timeout.Token);
             if (response.IsSuccessStatusCode)
             {
-                return null;
+                return new(null, await ReadWarningAsync(response, timeout.Token));
             }
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 User = null;
                 Changed?.Invoke();
-                return "Your session has expired. Sign in again.";
+                return new("Your session has expired. Sign in again.", null);
             }
 
-            if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
+            if (response.StatusCode == HttpStatusCode.Conflict)
             {
-                return await ReadErrorAsync(response, timeout.Token) ?? "The password could not be changed. Check the details and try again.";
+                return new(await ReadErrorAsync(response, timeout.Token) ?? ConflictFallback, null);
             }
 
-            return $"Could not change the password (status {(int)response.StatusCode}). Try again.";
+            if (response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                return new(await ReadErrorAsync(response, timeout.Token) ?? "The password could not be changed. Check the details and try again.", null);
+            }
+
+            return new($"Could not change the password (status {(int)response.StatusCode}). Try again.", null);
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
         {
-            return "Could not reach the API. Try again.";
+            return new("Could not reach the API. Try again.", null);
         }
     }
 
@@ -121,6 +131,24 @@ public sealed class PocAuthState
 
         User = null;
         Changed?.Invoke();
+    }
+
+    private static async Task<string?> ReadWarningAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.StatusCode == HttpStatusCode.NoContent)
+        {
+            return null;
+        }
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<WarningResponse>(cancellationToken: cancellationToken);
+            return string.IsNullOrWhiteSpace(body?.Warning) ? null : body.Warning;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)

@@ -116,13 +116,49 @@ test.describe('POC auth change password', () => {
     expect(statuses.filter((s) => s === 204)).toHaveLength(1);
     for (const response of responses.filter((r) => r.status() !== 204)) {
       expect([400, 409]).toContain(response.status());
-      expect(typeof (await response.json()).error).toBe('string');
+      const error = (await response.json()).error;
+      expect(typeof error).toBe('string');
+      if (response.status() === 409) {
+        expect(error).toContain('Enter the new current password and try again');
+      }
     }
 
     const winner = statuses.indexOf(204);
     const login = await request.post('/api/auth/login', { data: { username: user.username, password: `Concurrent-pass-${winner}` } });
     expect(login.status()).toBe(200);
     expect((await changePassword(request, `Concurrent-pass-${winner}`, user.password)).status()).toBe(204);
+  });
+
+  test('a partial revocation failure shows a warning and a 409 shows the retry guidance', async ({ page }) => {
+    const problems = watchConsole(page, resourceFailure('409'));
+    const user = await loginAs(page);
+    await page.goto('/change-password');
+    await expect(page.getByText('Other devices are signed out when you change it.')).toBeVisible();
+
+    await page.route('**/api/auth/change-password', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ warning: 'Password changed, but other devices could not be signed out.' }) }));
+    await fillAndSubmit(page, user.password, NEW_PASSWORD);
+    await expect(page.getByTestId('change-password-warning')).toHaveText('Password changed, but other devices could not be signed out.');
+    await expect(page.getByTestId('change-password-success')).toHaveCount(0);
+    await expect(page.getByText('Other devices are signed out when you change it.')).toHaveCount(0);
+    await expectNoErrorOverlay(page);
+
+    await page.unroute('**/api/auth/change-password');
+    await page.route('**/api/auth/change-password', (route) =>
+      route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'The password was changed by another request. Enter the new current password and try again.' }) }));
+    await fillAndSubmit(page, user.password, NEW_PASSWORD);
+    await expect(page.getByTestId('change-password-error')).toContainText('Enter the new current password and try again');
+    await expect(page.getByTestId('change-password-warning')).toHaveCount(0);
+    await expect(page.getByTestId('change-password-submit')).toBeEnabled();
+    await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+
+    await page.unroute('**/api/auth/change-password');
+    await page.route('**/api/auth/change-password', (route) =>
+      route.fulfill({ status: 409, contentType: 'text/html', body: '<html>conflict' }));
+    await fillAndSubmit(page, user.password, NEW_PASSWORD);
+    await expect(page.getByTestId('change-password-error')).toContainText('changed by another request');
+    await expectNoErrorOverlay(page);
+    expect(problems).toEqual([]);
   });
 
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
