@@ -59,6 +59,49 @@ public sealed class TablePocAuthStore : IPocAuthStore
         await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, tokenHash, cancellationToken: cancellationToken);
     }
 
+    public async Task<bool> UpdatePasswordAsync(string username, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var existing = await _users.GetEntityIfExistsAsync<PocUserEntity>(
+            PocUserEntity.Partition, PocUserEntity.KeyFor(username), cancellationToken: cancellationToken);
+        if (!existing.HasValue)
+        {
+            return false;
+        }
+
+        var user = existing.Value!;
+        user.PasswordHash = passwordHash;
+        user.Salt = salt;
+        user.Iterations = iterations;
+        user.Algorithm = PocPasswordHasher.Algorithm;
+        try
+        {
+            await _users.UpdateEntityAsync(user, user.ETag, TableUpdateMode.Replace, cancellationToken);
+            return true;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
+        }
+    }
+
+    public async Task DeleteSessionsForUserAsync(string username, string? exceptTokenHash, CancellationToken cancellationToken = default)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var sessions = _sessions.QueryAsync<PocSessionEntity>(
+            s => s.PartitionKey == PocSessionEntity.Partition && s.Username == username,
+            cancellationToken: cancellationToken);
+        await foreach (var session in sessions)
+        {
+            if (exceptTokenHash is not null && session.RowKey == exceptTokenHash)
+            {
+                continue;
+            }
+
+            await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, session.RowKey, cancellationToken: cancellationToken);
+        }
+    }
+
     private async Task EnsureTablesAsync(CancellationToken cancellationToken)
     {
         if (_initialized)

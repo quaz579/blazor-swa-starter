@@ -122,4 +122,64 @@ public sealed class PocAuthStateTests : TestContext
         error.Should().NotBeNull();
         state.IsSignedIn.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ChangePassword_Success_PostsBothPasswordsAndReturnsNull()
+    {
+        string? sent = null;
+        var state = Create(true, async req =>
+        {
+            sent = await req.Content!.ReadAsStringAsync();
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }, out var requests);
+
+        var error = await state.ChangePasswordAsync("old-pass-1", "new-pass-2");
+
+        error.Should().BeNull();
+        requests.Should().Equal("POST /api/auth/change-password");
+        sent.Should().Contain("\"currentPassword\":\"old-pass-1\"").And.Contain("\"newPassword\":\"new-pass-2\"");
+    }
+
+    [Fact]
+    public async Task ChangePassword_BadRequest_ReturnsTheServerMessage()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.BadRequest, "{\"error\":\"The current password is incorrect.\"}")), out _);
+
+        (await state.ChangePasswordAsync("a", "b")).Should().Be("The current password is incorrect.");
+    }
+
+    [Fact]
+    public async Task ChangePassword_BadRequestWithMalformedBody_ReturnsAGenericMessage()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.BadRequest, "<html>nope")), out _);
+
+        (await state.ChangePasswordAsync("a", "b")).Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task ChangePassword_Unauthorized_SignsTheUserOut()
+    {
+        var calls = 0;
+        var state = Create(true, _ => Task.FromResult(calls++ == 0
+            ? Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[]}")
+            : Json(HttpStatusCode.Unauthorized, "{\"error\":\"Sign in required.\"}")), out _);
+        await state.LoginAsync("admin", "x");
+
+        var error = await state.ChangePasswordAsync("a", "b");
+
+        error.Should().Contain("Sign in");
+        state.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ChangePassword_ServerErrorTransportFailureAndTimeout_ReturnMessagesWithoutThrowing()
+    {
+        var server = Create(true, _ => Task.FromResult(Json(HttpStatusCode.InternalServerError, "{}")), out _);
+        var transport = Create(true, _ => throw new HttpRequestException("reset"), out _);
+        var timeout = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
+
+        (await server.ChangePasswordAsync("a", "b")).Should().Contain("500");
+        (await transport.ChangePasswordAsync("a", "b")).Should().Contain("Could not reach");
+        (await timeout.ChangePasswordAsync("a", "b")).Should().Contain("Could not reach");
+    }
 }

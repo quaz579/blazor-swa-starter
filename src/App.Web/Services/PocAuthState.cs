@@ -8,9 +8,12 @@ public sealed record PocUser(string Username, string[] Roles);
 
 internal sealed record MeResponse(bool Authenticated, string? Username, string[]? Roles);
 
+internal sealed record ErrorResponse(string? Error);
+
 public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ChangePasswordTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;
     private bool _initialized;
@@ -74,6 +77,38 @@ public sealed class PocAuthState
         return null;
     }
 
+    public async Task<string?> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ChangePasswordTimeout);
+        try
+        {
+            using var response = await _http.PostAsJsonAsync("api/auth/change-password", new { currentPassword, newPassword }, timeout.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                User = null;
+                Changed?.Invoke();
+                return "Your session has expired. Sign in again.";
+            }
+
+            if (response.StatusCode == HttpStatusCode.BadRequest)
+            {
+                return await ReadErrorAsync(response, timeout.Token) ?? "The password could not be changed. Check the details and try again.";
+            }
+
+            return $"Could not change the password (status {(int)response.StatusCode}). Try again.";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            return "Could not reach the API. Try again.";
+        }
+    }
+
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -86,6 +121,19 @@ public sealed class PocAuthState
 
         User = null;
         Changed?.Invoke();
+    }
+
+    private static async Task<string?> ReadErrorAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<ErrorResponse>(cancellationToken: cancellationToken);
+            return string.IsNullOrWhiteSpace(body?.Error) ? null : body.Error;
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     private async Task<PocUser?> FetchMeAsync(CancellationToken cancellationToken)

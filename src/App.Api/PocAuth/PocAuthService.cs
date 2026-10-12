@@ -5,6 +5,14 @@ using Microsoft.Azure.Functions.Worker.Http;
 
 namespace App.Api.PocAuth;
 
+public enum ChangePasswordResult
+{
+    Changed,
+    WrongCurrentPassword,
+    WeakNewPassword,
+    UserNotFound,
+}
+
 public sealed class PocAuthService
 {
     private static readonly byte[] DummySalt = new byte[PocPasswordHasher.SaltBytes];
@@ -79,6 +87,37 @@ public sealed class PocAuthService
         return PocPasswordHasher.Verify(password, user.Salt, user.PasswordHash, user.Iterations)
             ? new PocPrincipal(user.Username, user.GetRoles())
             : null;
+    }
+
+    public async Task<ChangePasswordResult> ChangePasswordAsync(
+        PocPrincipal principal,
+        string? currentToken,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var verified = await AuthenticateAsync(principal.Username, currentPassword, cancellationToken);
+        if (verified is null)
+        {
+            return ChangePasswordResult.WrongCurrentPassword;
+        }
+
+        if (PocPasswordPolicy.Validate(newPassword, currentPassword) is not null)
+        {
+            return ChangePasswordResult.WeakNewPassword;
+        }
+
+        var (salt, hash, iterations) = PocPasswordHasher.Hash(newPassword);
+        if (!await _store.UpdatePasswordAsync(verified.Username, hash, salt, iterations, cancellationToken))
+        {
+            return ChangePasswordResult.UserNotFound;
+        }
+
+        await _store.DeleteSessionsForUserAsync(
+            verified.Username,
+            string.IsNullOrWhiteSpace(currentToken) ? null : HashToken(currentToken),
+            cancellationToken);
+        return ChangePasswordResult.Changed;
     }
 
     public async Task<(string Token, DateTimeOffset ExpiresUtc)> CreateSessionAsync(PocPrincipal principal, CancellationToken cancellationToken = default)

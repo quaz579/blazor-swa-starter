@@ -11,4 +11,8 @@ public interface IPocAuthStore
     Task<PocSessionEntity?> GetSessionAsync(string tokenHash, CancellationToken cancellationToken = default);
 
     Task DeleteSessionAsync(string tokenHash, CancellationToken cancellationToken = default);
+
+    Task<bool> UpdatePasswordAsync(string username, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default);
+
+    Task DeleteSessionsForUserAsync(string username, string? exceptTokenHash, CancellationToken cancellationToken = default);
 }

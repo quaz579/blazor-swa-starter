@@ -28,6 +28,7 @@
                 @if (Auth.IsSignedIn)
                 {
                     <span class="nav-link" data-testid="nav-user">@Auth.User!.Username</span>
+                    <NavLink class="nav-link" href="change-password" data-testid="nav-change-password">Change password</NavLink>
                     <button type="button" class="nav-link btn btn-link" data-testid="nav-logout" @onclick="LogoutAsync" @onclick:stopPropagation="true">Sign out</button>
                 }
                 else

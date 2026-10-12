@@ -157,4 +157,87 @@ public sealed class PocAuthServiceTests
     {
         PocAuthService.BuildClearedCookie(secure: false).Should().StartWith("poc_session=; ").And.Contain("Max-Age=0");
     }
+
+    [Fact]
+    public async Task ChangePassword_WithTheRightCurrentPassword_WritesAFreshSaltAndHash()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
+        await service.SeedAsync();
+        var before = _store.Users["admin"];
+        var (oldSalt, oldHash) = (before.Salt, before.PasswordHash);
+        var principal = new PocPrincipal("admin", ["admin"]);
+
+        var result = await service.ChangePasswordAsync(principal, null, "Ch@nageM3", "Another-pass-9");
+
+        result.Should().Be(ChangePasswordResult.Changed);
+        var after = _store.Users["admin"];
+        after.Salt.Should().NotBe(oldSalt);
+        after.PasswordHash.Should().NotBe(oldHash);
+        after.Iterations.Should().Be(PocPasswordHasher.DefaultIterations);
+        (await service.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
+        (await service.AuthenticateAsync("admin", "Ch@nageM3")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_RevokesTheCallersOtherSessionsButKeepsTheCurrentOneAndOtherUsers()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"), SeedUser("other", "Ch@nageM3", "user"));
+        await service.SeedAsync();
+        var admin = new PocPrincipal("admin", ["admin"]);
+        var (current, _) = await service.CreateSessionAsync(admin);
+        var (second, _) = await service.CreateSessionAsync(admin);
+        var (third, _) = await service.CreateSessionAsync(admin);
+        var (others, _) = await service.CreateSessionAsync(new PocPrincipal("other", ["user"]));
+
+        var result = await service.ChangePasswordAsync(admin, current, "Ch@nageM3", "Another-pass-9");
+
+        result.Should().Be(ChangePasswordResult.Changed);
+        (await service.ValidateSessionAsync(current)).Should().NotBeNull();
+        (await service.ValidateSessionAsync(second)).Should().BeNull();
+        (await service.ValidateSessionAsync(third)).Should().BeNull();
+        (await service.ValidateSessionAsync(others)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_ChangesNothingAndKeepsSessions()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
+        await service.SeedAsync();
+        var admin = new PocPrincipal("admin", ["admin"]);
+        var (other, _) = await service.CreateSessionAsync(admin);
+        var hash = _store.Users["admin"].PasswordHash;
+
+        var result = await service.ChangePasswordAsync(admin, null, "nope", "Another-pass-9");
+
+        result.Should().Be(ChangePasswordResult.WrongCurrentPassword);
+        _store.Users["admin"].PasswordHash.Should().Be(hash);
+        (await service.ValidateSessionAsync(other)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_WeakNewPassword_ChangesNothing()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
+        await service.SeedAsync();
+        var hash = _store.Users["admin"].PasswordHash;
+
+        var result = await service.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "weak");
+
+        result.Should().Be(ChangePasswordResult.WeakNewPassword);
+        _store.Users["admin"].PasswordHash.Should().Be(hash);
+    }
+
+    [Fact]
+    public async Task ChangePassword_ChangedPasswordSurvivesReseedingAndARestartedService()
+    {
+        var seed = SeedUser("admin", "Ch@nageM3", "admin");
+        var first = CreateService(seed);
+        await first.SeedAsync();
+        await first.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "Another-pass-9");
+
+        var restarted = CreateService(seed);
+
+        (await restarted.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
+        (await restarted.AuthenticateAsync("admin", "Ch@nageM3")).Should().BeNull();
+    }
 }
