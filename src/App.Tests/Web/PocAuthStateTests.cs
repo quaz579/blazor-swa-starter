@@ -133,9 +133,9 @@ public sealed class PocAuthStateTests : TestContext
             return new HttpResponseMessage(HttpStatusCode.NoContent);
         }, out var requests);
 
-        var error = await state.ChangePasswordAsync("old-pass-1", "new-pass-2");
+        var result = await state.ChangePasswordAsync("old-pass-1", "new-pass-2");
 
-        error.Should().BeNull();
+        result.Should().Be(new PasswordChangeResult(null, null));
         requests.Should().Equal("POST /api/auth/change-password");
         sent.Should().Contain("\"currentPassword\":\"old-pass-1\"").And.Contain("\"newPassword\":\"new-pass-2\"");
     }
@@ -145,7 +145,7 @@ public sealed class PocAuthStateTests : TestContext
     {
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.BadRequest, "{\"error\":\"The current password is incorrect.\"}")), out _);
 
-        (await state.ChangePasswordAsync("a", "b")).Should().Be("The current password is incorrect.");
+        (await state.ChangePasswordAsync("a", "b")).Error.Should().Be("The current password is incorrect.");
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class PocAuthStateTests : TestContext
     {
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.BadRequest, "<html>nope")), out _);
 
-        (await state.ChangePasswordAsync("a", "b")).Should().NotBeNullOrWhiteSpace();
+        (await state.ChangePasswordAsync("a", "b")).Error.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -165,9 +165,9 @@ public sealed class PocAuthStateTests : TestContext
             : Json(HttpStatusCode.Unauthorized, "{\"error\":\"Sign in required.\"}")), out _);
         await state.LoginAsync("admin", "x");
 
-        var error = await state.ChangePasswordAsync("a", "b");
+        var result = await state.ChangePasswordAsync("a", "b");
 
-        error.Should().Contain("Sign in");
+        result.Error.Should().Contain("Sign in");
         state.IsSignedIn.Should().BeFalse();
     }
 
@@ -178,8 +178,37 @@ public sealed class PocAuthStateTests : TestContext
         var transport = Create(true, _ => throw new HttpRequestException("reset"), out _);
         var timeout = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
 
-        (await server.ChangePasswordAsync("a", "b")).Should().Contain("500");
-        (await transport.ChangePasswordAsync("a", "b")).Should().Contain("Could not reach");
-        (await timeout.ChangePasswordAsync("a", "b")).Should().Contain("Could not reach");
+        (await server.ChangePasswordAsync("a", "b")).Error.Should().Contain("500");
+        (await transport.ChangePasswordAsync("a", "b")).Error.Should().Contain("Could not reach");
+        (await timeout.ChangePasswordAsync("a", "b")).Error.Should().Contain("Could not reach");
+    }
+
+    [Fact]
+    public async Task ChangePassword_OkWithWarning_SucceedsAndSurfacesTheWarning()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "{\"warning\":\"Password changed, but other devices could not be signed out.\"}")), out _);
+
+        var result = await state.ChangePasswordAsync("a", "b");
+
+        result.Error.Should().BeNull();
+        result.Warning.Should().Be("Password changed, but other devices could not be signed out.");
+    }
+
+    [Fact]
+    public async Task ChangePassword_OkWithUnreadableBody_StillSucceedsWithoutAWarning()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "<html>")), out _);
+
+        (await state.ChangePasswordAsync("a", "b")).Should().Be(new PasswordChangeResult(null, null));
+    }
+
+    [Fact]
+    public async Task ChangePassword_Conflict_ReturnsTheServerMessageOrAConflictSpecificFallback()
+    {
+        var withBody = Create(true, _ => Task.FromResult(Json(HttpStatusCode.Conflict, "{\"error\":\"The password was changed by another request. Enter the new current password and try again.\"}")), out _);
+        var withoutBody = Create(true, _ => Task.FromResult(Json(HttpStatusCode.Conflict, "<html>")), out _);
+
+        (await withBody.ChangePasswordAsync("a", "b")).Error.Should().Contain("Enter the new current password");
+        (await withoutBody.ChangePasswordAsync("a", "b")).Error.Should().Contain("changed by another request").And.Contain("Enter the new current password");
     }
 }

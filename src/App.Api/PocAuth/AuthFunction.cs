@@ -145,12 +145,15 @@ public sealed class AuthFunction
         switch (outcome.Result)
         {
             case ChangePasswordResult.Changed:
-                if (outcome.Message is not null)
+                if (outcome.Message is null)
                 {
-                    _logger.LogWarning("{Message}", outcome.Message);
+                    return req.CreateResponse(HttpStatusCode.NoContent);
                 }
 
-                return req.CreateResponse(HttpStatusCode.NoContent);
+                _logger.LogWarning("{Message}", outcome.Message);
+                var partial = req.CreateResponse(HttpStatusCode.OK);
+                await partial.WriteAsJsonAsync(new { warning = outcome.Message }, cancellationToken);
+                return partial;
             case ChangePasswordResult.WrongCurrentPassword:
                 _logger.LogWarning("Rejected change-password attempt with a wrong current password");
                 return await BadRequestAsync(req, outcome.Message!, cancellationToken);
