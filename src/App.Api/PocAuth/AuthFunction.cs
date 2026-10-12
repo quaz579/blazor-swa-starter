@@ -140,20 +140,26 @@ public sealed class AuthFunction
             return await BadRequestAsync(req, "Current password and new password are required.", cancellationToken);
         }
 
-        var result = await _auth.ChangePasswordAsync(
+        var outcome = await _auth.ChangePasswordAsync(
             principal, PocAuthService.ReadSessionToken(req), request.CurrentPassword, request.NewPassword, cancellationToken);
-        switch (result)
+        switch (outcome.Result)
         {
             case ChangePasswordResult.Changed:
+                if (outcome.Message is not null)
+                {
+                    _logger.LogWarning("{Message}", outcome.Message);
+                }
+
                 return req.CreateResponse(HttpStatusCode.NoContent);
             case ChangePasswordResult.WrongCurrentPassword:
                 _logger.LogWarning("Rejected change-password attempt with a wrong current password");
-                return await BadRequestAsync(req, "The current password is incorrect.", cancellationToken);
+                return await BadRequestAsync(req, outcome.Message!, cancellationToken);
             case ChangePasswordResult.WeakNewPassword:
-                return await BadRequestAsync(
-                    req,
-                    PocPasswordPolicy.Validate(request.NewPassword, request.CurrentPassword) ?? "The new password is not acceptable.",
-                    cancellationToken);
+                return await BadRequestAsync(req, outcome.Message!, cancellationToken);
+            case ChangePasswordResult.Conflict:
+                var conflict = req.CreateResponse(HttpStatusCode.Conflict);
+                await conflict.WriteAsJsonAsync(new { error = outcome.Message }, cancellationToken);
+                return conflict;
             default:
                 return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
         }

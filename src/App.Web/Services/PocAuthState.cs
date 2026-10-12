@@ -96,7 +96,7 @@ public sealed class PocAuthState
                 return "Your session has expired. Sign in again.";
             }
 
-            if (response.StatusCode == HttpStatusCode.BadRequest)
+            if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict)
             {
                 return await ReadErrorAsync(response, timeout.Token) ?? "The password could not be changed. Check the details and try again.";
             }

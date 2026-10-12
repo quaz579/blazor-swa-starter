@@ -15,6 +15,10 @@ function watchConsole(page: Page, ...allowed: RegExp[]): string[] {
   return problems;
 }
 
+async function expectNoErrorOverlay(page: Page) {
+  await expect(page.locator('#blazor-error-ui')).toBeHidden();
+}
+
 async function changePassword(request: APIRequestContext, currentPassword: string, newPassword: string) {
   return request.post('/api/auth/change-password', { data: { currentPassword, newPassword } });
 }
@@ -69,6 +73,7 @@ test.describe('POC auth change password', () => {
     await page.getByTestId('login-submit').click();
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
 
+    await expectNoErrorOverlay(page);
     expect(problems).toEqual([]);
   });
 
@@ -77,6 +82,7 @@ test.describe('POC auth change password', () => {
     await page.goto('/change-password');
     await expect(page.getByTestId('change-password-signin-required')).toBeVisible();
     await expect(page.getByTestId('change-password-submit')).toHaveCount(0);
+    await expectNoErrorOverlay(page);
     expect(problems).toEqual([]);
   });
 
@@ -97,6 +103,28 @@ test.describe('POC auth change password', () => {
     }
   });
 
+  test('concurrent changes with the same current password yield one 204 and clean JSON errors for the rest', async ({ page }) => {
+    const user = await loginAs(page);
+    const request = page.context().request;
+
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        request.post('/api/auth/change-password', { data: { currentPassword: user.password, newPassword: `Concurrent-pass-${i}` } })),
+    );
+
+    const statuses = responses.map((r) => r.status());
+    expect(statuses.filter((s) => s === 204)).toHaveLength(1);
+    for (const response of responses.filter((r) => r.status() !== 204)) {
+      expect([400, 409]).toContain(response.status());
+      expect(typeof (await response.json()).error).toBe('string');
+    }
+
+    const winner = statuses.indexOf(204);
+    const login = await request.post('/api/auth/login', { data: { username: user.username, password: `Concurrent-pass-${winner}` } });
+    expect(login.status()).toBe(200);
+    expect((await changePassword(request, `Concurrent-pass-${winner}`, user.password)).status()).toBe(204);
+  });
+
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('400'));
     const user = await loginAs(page);
@@ -113,6 +141,7 @@ test.describe('POC auth change password', () => {
 
     expect((await page.context().request.post('/api/auth/login', { data: { username: user.username, password: user.password } })).status()).toBe(200);
     await expect(page.getByTestId('change-password-submit')).toBeEnabled();
+    await expectNoErrorOverlay(page);
     expect(problems).toEqual([]);
   });
 
@@ -146,6 +175,7 @@ test.describe('POC auth change password', () => {
     await fillAndSubmit(page, user.password, NEW_PASSWORD);
     await expect(page.getByTestId('change-password-signin-required')).toBeVisible();
 
+    await expectNoErrorOverlay(page);
     expect(problems).toEqual([]);
   });
 });

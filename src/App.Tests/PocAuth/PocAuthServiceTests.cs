@@ -169,7 +169,7 @@ public sealed class PocAuthServiceTests
 
         var result = await service.ChangePasswordAsync(principal, null, "Ch@nageM3", "Another-pass-9");
 
-        result.Should().Be(ChangePasswordResult.Changed);
+        result.Result.Should().Be(ChangePasswordResult.Changed);
         var after = _store.Users["admin"];
         after.Salt.Should().NotBe(oldSalt);
         after.PasswordHash.Should().NotBe(oldHash);
@@ -191,7 +191,7 @@ public sealed class PocAuthServiceTests
 
         var result = await service.ChangePasswordAsync(admin, current, "Ch@nageM3", "Another-pass-9");
 
-        result.Should().Be(ChangePasswordResult.Changed);
+        result.Result.Should().Be(ChangePasswordResult.Changed);
         (await service.ValidateSessionAsync(current)).Should().NotBeNull();
         (await service.ValidateSessionAsync(second)).Should().BeNull();
         (await service.ValidateSessionAsync(third)).Should().BeNull();
@@ -209,7 +209,7 @@ public sealed class PocAuthServiceTests
 
         var result = await service.ChangePasswordAsync(admin, null, "nope", "Another-pass-9");
 
-        result.Should().Be(ChangePasswordResult.WrongCurrentPassword);
+        result.Result.Should().Be(ChangePasswordResult.WrongCurrentPassword);
         _store.Users["admin"].PasswordHash.Should().Be(hash);
         (await service.ValidateSessionAsync(other)).Should().NotBeNull();
     }
@@ -223,7 +223,7 @@ public sealed class PocAuthServiceTests
 
         var result = await service.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "weak");
 
-        result.Should().Be(ChangePasswordResult.WeakNewPassword);
+        result.Result.Should().Be(ChangePasswordResult.WeakNewPassword);
         _store.Users["admin"].PasswordHash.Should().Be(hash);
     }
 
@@ -239,5 +239,33 @@ public sealed class PocAuthServiceTests
 
         (await restarted.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
         (await restarted.AuthenticateAsync("admin", "Ch@nageM3")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_WhenTheUserRowChangedAfterVerification_ReturnsConflictInsteadOfOverwriting()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
+        await service.SeedAsync();
+        var stale = (await _store.GetUserAsync("admin"))!;
+        await _store.UpdatePasswordAsync(stale, "winner-hash", "winner-salt", 1);
+
+        var result = await _store.UpdatePasswordAsync(stale, "loser-hash", "loser-salt", 1);
+
+        result.Should().Be(PasswordUpdateResult.Conflict);
+        _store.Users["admin"].PasswordHash.Should().Be("winner-hash");
+    }
+
+    [Fact]
+    public async Task ChangePassword_WhenSessionRevocationFails_StillReportsTheChangeWithAWarning()
+    {
+        var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
+        await service.SeedAsync();
+        _store.ThrowOnSessionDelete = true;
+
+        var outcome = await service.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "Another-pass-9");
+
+        outcome.Result.Should().Be(ChangePasswordResult.Changed);
+        outcome.Message.Should().Contain("was changed");
+        (await service.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
     }
 }

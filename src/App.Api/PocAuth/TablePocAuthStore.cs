@@ -59,29 +59,33 @@ public sealed class TablePocAuthStore : IPocAuthStore
         await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, tokenHash, cancellationToken: cancellationToken);
     }
 
-    public async Task<bool> UpdatePasswordAsync(string username, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
+    public async Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
     {
         await EnsureTablesAsync(cancellationToken);
-        var existing = await _users.GetEntityIfExistsAsync<PocUserEntity>(
-            PocUserEntity.Partition, PocUserEntity.KeyFor(username), cancellationToken: cancellationToken);
-        if (!existing.HasValue)
+        var update = new PocUserEntity
         {
-            return false;
-        }
-
-        var user = existing.Value!;
-        user.PasswordHash = passwordHash;
-        user.Salt = salt;
-        user.Iterations = iterations;
-        user.Algorithm = PocPasswordHasher.Algorithm;
+            PartitionKey = verifiedUser.PartitionKey,
+            RowKey = verifiedUser.RowKey,
+            Username = verifiedUser.Username,
+            DisplayName = verifiedUser.DisplayName,
+            Roles = verifiedUser.Roles,
+            PasswordHash = passwordHash,
+            Salt = salt,
+            Iterations = iterations,
+            Algorithm = PocPasswordHasher.Algorithm,
+        };
         try
         {
-            await _users.UpdateEntityAsync(user, user.ETag, TableUpdateMode.Replace, cancellationToken);
-            return true;
+            await _users.UpdateEntityAsync(update, verifiedUser.ETag, TableUpdateMode.Replace, cancellationToken);
+            return PasswordUpdateResult.Updated;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 412)
+        {
+            return PasswordUpdateResult.Conflict;
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {
-            return false;
+            return PasswordUpdateResult.NotFound;
         }
     }
 

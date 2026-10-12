@@ -1,5 +1,12 @@
 namespace App.Api.PocAuth;
 
+public enum PasswordUpdateResult
+{
+    Updated,
+    Conflict,
+    NotFound,
+}
+
 public interface IPocAuthStore
 {
     Task<PocUserEntity?> GetUserAsync(string username, CancellationToken cancellationToken = default);
@@ -12,7 +19,7 @@ public interface IPocAuthStore
 
     Task DeleteSessionAsync(string tokenHash, CancellationToken cancellationToken = default);
 
-    Task<bool> UpdatePasswordAsync(string username, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default);
+    Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default);
 
     Task DeleteSessionsForUserAsync(string username, string? exceptTokenHash, CancellationToken cancellationToken = default);
 }
