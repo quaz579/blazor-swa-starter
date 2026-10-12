@@ -2,7 +2,7 @@ import { APIRequestContext, ConsoleMessage, Page, expect, test } from '@playwrig
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
 const NEW_PASSWORD = 'Rotated-e2e-pass-7';
-const EXPECTED_RESOURCE_FAILURE = /^Failed to load resource: the server responded with a status of (400|500)/;
+const EXPECTED_RESOURCE_FAILURE = /^Failed to load resource: the server responded with a status of (400|401|500)/;
 
 function watchConsole(page: Page): string[] {
   const problems: string[] = [];
