@@ -20,6 +20,8 @@ public sealed class AuthFunction
 
     internal sealed record LoginRequest(string? Username, string? Password);
 
+    internal sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
+
     /// <summary>POST /api/auth/login</summary>
     [Function("PocAuthLogin")]
     public async Task<HttpResponseData> Login(
@@ -102,6 +104,71 @@ public sealed class AuthFunction
         }
 
         await response.WriteAsJsonAsync(new { authenticated = true, username = principal.Username, roles = principal.Roles }, cancellationToken);
+        return response;
+    }
+
+    /// <summary>POST /api/auth/change-password</summary>
+    [Function("PocAuthChangePassword")]
+    public async Task<HttpResponseData> ChangePassword(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/change-password")] HttpRequestData req,
+        CancellationToken cancellationToken)
+    {
+        if (!PocAuthSettings.IsEnabled)
+        {
+            return await NotEnabledAsync(req, cancellationToken);
+        }
+
+        var principal = await _auth.GetPrincipalAsync(req, cancellationToken);
+        if (principal is null)
+        {
+            return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
+        }
+
+        ChangePasswordRequest? request;
+        try
+        {
+            request = await req.ReadFromJsonAsync<ChangePasswordRequest>(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Rejected malformed change-password body");
+            request = null;
+        }
+
+        if (request is null || string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
+        {
+            return await BadRequestAsync(req, "Current password and new password are required.", cancellationToken);
+        }
+
+        var outcome = await _auth.ChangePasswordAsync(
+            principal, PocAuthService.ReadSessionToken(req), request.CurrentPassword, request.NewPassword, cancellationToken);
+        switch (outcome.Result)
+        {
+            case ChangePasswordResult.Changed:
+                if (outcome.Message is not null)
+                {
+                    _logger.LogWarning("{Message}", outcome.Message);
+                }
+
+                return req.CreateResponse(HttpStatusCode.NoContent);
+            case ChangePasswordResult.WrongCurrentPassword:
+                _logger.LogWarning("Rejected change-password attempt with a wrong current password");
+                return await BadRequestAsync(req, outcome.Message!, cancellationToken);
+            case ChangePasswordResult.WeakNewPassword:
+                return await BadRequestAsync(req, outcome.Message!, cancellationToken);
+            case ChangePasswordResult.Conflict:
+                var conflict = req.CreateResponse(HttpStatusCode.Conflict);
+                await conflict.WriteAsJsonAsync(new { error = outcome.Message }, cancellationToken);
+                return conflict;
+            default:
+                return await PocAuthService.UnauthorizedAsync(req, cancellationToken);
+        }
+    }
+
+    private static async Task<HttpResponseData> BadRequestAsync(HttpRequestData req, string message, CancellationToken cancellationToken)
+    {
+        var response = req.CreateResponse(HttpStatusCode.BadRequest);
+        await response.WriteAsJsonAsync(new { error = message }, cancellationToken);
         return response;
     }
 

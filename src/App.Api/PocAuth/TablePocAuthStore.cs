@@ -59,6 +59,53 @@ public sealed class TablePocAuthStore : IPocAuthStore
         await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, tokenHash, cancellationToken: cancellationToken);
     }
 
+    public async Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var update = new PocUserEntity
+        {
+            PartitionKey = verifiedUser.PartitionKey,
+            RowKey = verifiedUser.RowKey,
+            Username = verifiedUser.Username,
+            DisplayName = verifiedUser.DisplayName,
+            Roles = verifiedUser.Roles,
+            PasswordHash = passwordHash,
+            Salt = salt,
+            Iterations = iterations,
+            Algorithm = PocPasswordHasher.Algorithm,
+        };
+        try
+        {
+            await _users.UpdateEntityAsync(update, verifiedUser.ETag, TableUpdateMode.Replace, cancellationToken);
+            return PasswordUpdateResult.Updated;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 412)
+        {
+            return PasswordUpdateResult.Conflict;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return PasswordUpdateResult.NotFound;
+        }
+    }
+
+    public async Task DeleteSessionsForUserAsync(string username, string? exceptTokenHash, CancellationToken cancellationToken = default)
+    {
+        await EnsureTablesAsync(cancellationToken);
+        var sessions = _sessions.QueryAsync<PocSessionEntity>(
+            s => s.PartitionKey == PocSessionEntity.Partition && s.Username == username,
+            cancellationToken: cancellationToken);
+        await foreach (var session in sessions)
+        {
+            if (exceptTokenHash is not null && session.RowKey == exceptTokenHash)
+            {
+                continue;
+            }
+
+            await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, session.RowKey, cancellationToken: cancellationToken);
+        }
+    }
+
     private async Task EnsureTablesAsync(CancellationToken cancellationToken)
     {
         if (_initialized)

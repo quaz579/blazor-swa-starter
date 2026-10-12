@@ -80,6 +80,11 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
 - `POST /api/auth/login` `{username,password}` -> 200 `{username,roles}` + `poc_session` cookie
   (HttpOnly, SameSite=Lax, Secure only over HTTPS), 400 bad body, 401 bad credentials.
   `POST /api/auth/logout` -> 204 + `Max-Age=0`. `GET /api/auth/me` -> always 200, `{"authenticated":false}` or `{"authenticated":true,"username","roles"}`; only gated endpoints return 401.
+  `POST /api/auth/change-password` `{currentPassword,newPassword}` (signed in only) -> 204, 400 for a wrong
+  current password, a weak new one (8 to 128 characters with a letter and a digit, different from the
+  current one) or a bad body, 401 when anonymous. It writes a fresh salt and hash and revokes the
+  caller's other sessions. The signed-in nav link and `/change-password` page are always available when
+  auth is enabled. A changed password survives restarts because seeding never overwrites an existing user.
   `GET /api/health` stays anonymous.
 - Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; `POST`/`DELETE`
   `/api/items` are already gated when enabled. The enable script also drops the `allowedRoles`

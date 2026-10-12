@@ -5,6 +5,17 @@ using Microsoft.Azure.Functions.Worker.Http;
 
 namespace App.Api.PocAuth;
 
+public enum ChangePasswordResult
+{
+    Changed,
+    WrongCurrentPassword,
+    WeakNewPassword,
+    UserNotFound,
+    Conflict,
+}
+
+public sealed record ChangePasswordOutcome(ChangePasswordResult Result, string? Message);
+
 public sealed class PocAuthService
 {
     private static readonly byte[] DummySalt = new byte[PocPasswordHasher.SaltBytes];
@@ -79,6 +90,55 @@ public sealed class PocAuthService
         return PocPasswordHasher.Verify(password, user.Salt, user.PasswordHash, user.Iterations)
             ? new PocPrincipal(user.Username, user.GetRoles())
             : null;
+    }
+
+    public async Task<ChangePasswordOutcome> ChangePasswordAsync(
+        PocPrincipal principal,
+        string? currentToken,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        await SeedAsync(cancellationToken);
+        var user = await _store.GetUserAsync(principal.Username, cancellationToken);
+        if (user is null)
+        {
+            return new(ChangePasswordResult.UserNotFound, "Sign in required.");
+        }
+
+        if (!PocPasswordHasher.Verify(currentPassword, user.Salt, user.PasswordHash, user.Iterations))
+        {
+            return new(ChangePasswordResult.WrongCurrentPassword, "The current password is incorrect.");
+        }
+
+        var weakness = PocPasswordPolicy.Validate(newPassword, currentPassword);
+        if (weakness is not null)
+        {
+            return new(ChangePasswordResult.WeakNewPassword, weakness);
+        }
+
+        var (salt, hash, iterations) = PocPasswordHasher.Hash(newPassword);
+        switch (await _store.UpdatePasswordAsync(user, hash, salt, iterations, cancellationToken))
+        {
+            case PasswordUpdateResult.Conflict:
+                return new(ChangePasswordResult.Conflict, "The password was changed by another request. Sign in again.");
+            case PasswordUpdateResult.NotFound:
+                return new(ChangePasswordResult.UserNotFound, "Sign in required.");
+        }
+
+        try
+        {
+            await _store.DeleteSessionsForUserAsync(
+                user.Username,
+                string.IsNullOrWhiteSpace(currentToken) ? null : HashToken(currentToken),
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return new(ChangePasswordResult.Changed, "The password was changed, but other sessions could not be signed out.");
+        }
+
+        return new(ChangePasswordResult.Changed, null);
     }
 
     public async Task<(string Token, DateTimeOffset ExpiresUtc)> CreateSessionAsync(PocPrincipal principal, CancellationToken cancellationToken = default)

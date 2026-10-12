@@ -4,6 +4,7 @@ using App.Tests.Functions;
 using AwesomeAssertions;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace App.Tests.PocAuth;
 
@@ -126,6 +127,103 @@ public sealed class AuthFunctionTests : IDisposable
         (await _function.Login(TestHttpRequestData.CreateRequest("POST"), CancellationToken.None)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await _function.Logout(TestHttpRequestData.CreateRequest("POST"), CancellationToken.None)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await _function.Me(TestHttpRequestData.CreateRequest(), CancellationToken.None)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await _function.ChangePassword(TestHttpRequestData.CreateRequest("POST"), CancellationToken.None)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private async Task<string> SignInAsync()
+    {
+        var login = await _function.Login(
+            TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/login", new { username = "requester@example.com", password = "Ch@nageM3" }),
+            CancellationToken.None);
+        return TokenFrom(SetCookie(login));
+    }
+
+    private Task<HttpResponseData> ChangeAsync(string? token, object? body)
+    {
+        var req = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/change-password", body);
+        if (token is not null)
+        {
+            req.Headers.Add("Cookie", $"poc_session={token}");
+        }
+
+        return _function.ChangePassword(req, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Anonymous_Returns401AndChangesNothing()
+    {
+        var before = _store.Users.Count;
+
+        var response = await ChangeAsync(null, new { currentPassword = "Ch@nageM3", newPassword = "Brand-new-pass1" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        _store.Users.Count.Should().Be(before);
+        (await _service.AuthenticateAsync("requester@example.com", "Ch@nageM3")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_ExpiredOrUnknownSession_Returns401()
+    {
+        (await ChangeAsync("not-a-real-token", new { currentPassword = "Ch@nageM3", newPassword = "Brand-new-pass1" }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task ChangePassword_ValidRequest_Returns204AndOnlyTheNewPasswordWorks()
+    {
+        var token = await SignInAsync();
+
+        var response = await ChangeAsync(token, new { currentPassword = "Ch@nageM3", newPassword = "Brand-new-pass1" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _service.AuthenticateAsync("requester@example.com", "Brand-new-pass1")).Should().NotBeNull();
+        (await _service.AuthenticateAsync("requester@example.com", "Ch@nageM3")).Should().BeNull();
+        (await _service.ValidateSessionAsync(token)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_Returns400AndKeepsTheOldPassword()
+    {
+        var token = await SignInAsync();
+
+        var response = await ChangeAsync(token, new { currentPassword = "wrong", newPassword = "Brand-new-pass1" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("error").GetString().Should().Contain("current password");
+        (await _service.AuthenticateAsync("requester@example.com", "Ch@nageM3")).Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("short1")]
+    [InlineData("alllettersnodigit")]
+    [InlineData("12345678901")]
+    [InlineData("Ch@nageM3")]
+    public async Task ChangePassword_WeakNewPassword_Returns400AndKeepsTheOldPassword(string candidate)
+    {
+        var token = await SignInAsync();
+
+        var response = await ChangeAsync(token, new { currentPassword = "Ch@nageM3", newPassword = candidate });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await _service.AuthenticateAsync("requester@example.com", "Ch@nageM3")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ChangePassword_MissingOrMalformedBody_Returns400()
+    {
+        var token = await SignInAsync();
+
+        var missing = await ChangeAsync(token, null);
+        var blank = await ChangeAsync(token, new { currentPassword = "", newPassword = "" });
+        var malformedReq = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/change-password");
+        malformedReq.Body.Returns(new MemoryStream(System.Text.Encoding.UTF8.GetBytes("{not json")));
+        malformedReq.Headers.Add("Cookie", $"poc_session={token}");
+        var malformed = await _function.ChangePassword(malformedReq, CancellationToken.None);
+
+        missing.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        blank.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        malformed.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 }
 

@@ -113,8 +113,67 @@ jobs:
           path: tests/playwright-report/
           retention-days: 7
 
+  e2e-poc-auth:
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Install Azure Functions Core Tools and SWA CLI
+        run: npm install -g azure-functions-core-tools@4 @azure/static-web-apps-cli azurite@3.37.0
+
+      - name: Install Playwright test dependencies
+        working-directory: tests
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Enable POC auth
+        run: node scripts/enable-poc-auth.mjs
+
+      - name: Build solution
+        run: dotnet build BlazorSwaStarter.sln -c Release
+
+      - name: Start E2E environment
+        run: ./scripts/start-e2e.sh
+
+      - name: Run POC auth specs
+        working-directory: tests
+        env:
+          CI: "true"
+        run: npx playwright test specs/poc-auth.spec.ts specs/change-password.spec.ts
+
+      - name: Stop E2E environment
+        if: always()
+        run: ./scripts/stop-e2e.sh
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-poc-auth
+          path: |
+            tests/playwright-report/
+            tests/test-results/
+          retention-days: 7
+
   deploy:
-    needs: e2e
+    needs: [e2e, e2e-poc-auth]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

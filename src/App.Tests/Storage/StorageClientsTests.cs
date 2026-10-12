@@ -44,4 +44,58 @@ public sealed class StorageClientsTests
         await store.DeleteSessionAsync(tokenHash);
         (await store.GetSessionAsync(tokenHash)).Should().BeNull();
     }
+
+    [AzuriteFact]
+    public async Task TablePocAuthStore_UpdatesPasswordsAndRevokesOtherSessionsForOneUser_AgainstAzurite()
+    {
+        var store = new TablePocAuthStore(Local);
+        var username = $"azurite-{Guid.NewGuid():N}";
+        var other = $"azurite-{Guid.NewGuid():N}";
+        var (salt, hash, iterations) = PocPasswordHasher.Hash("pw", iterations: 1_000);
+        await store.AddUserIfMissingAsync(new PocUserEntity { RowKey = PocUserEntity.KeyFor(username), Username = username, Roles = "user", Salt = salt, PasswordHash = hash, Iterations = iterations });
+
+        var read = (await store.GetUserAsync(username.ToUpperInvariant()))!;
+        (await store.UpdatePasswordAsync(read, "new-hash", "new-salt", 2_000)).Should().Be(PasswordUpdateResult.Updated);
+        (await store.UpdatePasswordAsync(read, "stale-hash", "stale-salt", 1)).Should().Be(PasswordUpdateResult.Conflict);
+        var ghost = new PocUserEntity { RowKey = $"missing-{Guid.NewGuid():N}", ETag = read.ETag };
+        (await store.UpdatePasswordAsync(ghost, "h", "s", 1)).Should().Be(PasswordUpdateResult.NotFound);
+        var updated = (await store.GetUserAsync(username))!;
+        (updated.PasswordHash, updated.Salt, updated.Iterations).Should().Be(("new-hash", "new-salt", 2_000));
+
+        var keep = Guid.NewGuid().ToString("N");
+        var drop = Guid.NewGuid().ToString("N");
+        var foreign = Guid.NewGuid().ToString("N");
+        var expires = DateTimeOffset.UtcNow.AddHours(1);
+        await store.PutSessionAsync(new PocSessionEntity { RowKey = keep, Username = username, ExpiresUtc = expires });
+        await store.PutSessionAsync(new PocSessionEntity { RowKey = drop, Username = username, ExpiresUtc = expires });
+        await store.PutSessionAsync(new PocSessionEntity { RowKey = foreign, Username = other, ExpiresUtc = expires });
+
+        await store.DeleteSessionsForUserAsync(username, keep);
+
+        (await store.GetSessionAsync(keep)).Should().NotBeNull();
+        (await store.GetSessionAsync(drop)).Should().BeNull();
+        (await store.GetSessionAsync(foreign)).Should().NotBeNull();
+        await store.DeleteSessionAsync(keep);
+        await store.DeleteSessionAsync(foreign);
+    }
+
+    [AzuriteFact]
+    public async Task ChangePassword_EightConcurrentRequestsWithTheSameCurrentPassword_YieldsExactlyOneSuccessAndNoServerErrors()
+    {
+        var store = new TablePocAuthStore(Local);
+        var username = $"azurite-{Guid.NewGuid():N}";
+        var (salt, hash, iterations) = PocPasswordHasher.Hash("Original-pass-1", iterations: 1_000);
+        var service = new PocAuthService(store, TimeProvider.System, [new PocSeedUser(username, username, ["user"], salt, hash, iterations)]);
+        await service.SeedAsync();
+        var principal = new PocPrincipal(username, ["user"]);
+
+        var outcomes = await Task.WhenAll(Enumerable.Range(0, 8).Select(i =>
+            Task.Run(() => service.ChangePasswordAsync(principal, null, "Original-pass-1", $"Concurrent-pass-{i}"))));
+
+        outcomes.Count(o => o.Result == ChangePasswordResult.Changed).Should().Be(1);
+        outcomes.Where(o => o.Result != ChangePasswordResult.Changed).Should().OnlyContain(o =>
+            (o.Result == ChangePasswordResult.Conflict || o.Result == ChangePasswordResult.WrongCurrentPassword) && !string.IsNullOrWhiteSpace(o.Message));
+        var winner = outcomes.Select((o, i) => (o, i)).Single(x => x.o.Result == ChangePasswordResult.Changed).i;
+        (await service.AuthenticateAsync(username, $"Concurrent-pass-{winner}")).Should().NotBeNull();
+    }
 }
