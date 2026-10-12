@@ -2,12 +2,12 @@ import { APIRequestContext, ConsoleMessage, Page, expect, test } from '@playwrig
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
 const NEW_PASSWORD = 'Rotated-e2e-pass-7';
-const EXPECTED_RESOURCE_FAILURE = /^Failed to load resource: the server responded with a status of (400|401|500)/;
+const resourceFailure = (statuses: string) => new RegExp(`^Failed to load resource: the server responded with a status of (${statuses})`);
 
-function watchConsole(page: Page): string[] {
+function watchConsole(page: Page, ...allowed: RegExp[]): string[] {
   const problems: string[] = [];
   page.on('console', (message: ConsoleMessage) => {
-    if (message.type() === 'error' && !EXPECTED_RESOURCE_FAILURE.test(message.text())) {
+    if (message.type() === 'error' && !allowed.some((pattern) => pattern.test(message.text()))) {
       problems.push(message.text());
     }
   });
@@ -45,7 +45,7 @@ test.describe('POC auth change password', () => {
   });
 
   test('a signed-in user changes the password, signs out, and signs in with the new one', async ({ page }) => {
-    const problems = watchConsole(page);
+    const problems = watchConsole(page, resourceFailure('401'));
     const user = await loginAs(page);
 
     await page.goto('/');
@@ -98,7 +98,7 @@ test.describe('POC auth change password', () => {
   });
 
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
-    const problems = watchConsole(page);
+    const problems = watchConsole(page, resourceFailure('400'));
     const user = await loginAs(page);
     await page.goto('/change-password');
 
@@ -117,7 +117,7 @@ test.describe('POC auth change password', () => {
   });
 
   test('a server fault, a malformed body, and an aborted request leave the page usable', async ({ page }) => {
-    const problems = watchConsole(page);
+    const problems = watchConsole(page, resourceFailure('400|401|500'), /net::ERR_CONNECTION_RESET/);
     const user = await loginAs(page);
     await page.goto('/change-password');
 
@@ -146,6 +146,6 @@ test.describe('POC auth change password', () => {
     await fillAndSubmit(page, user.password, NEW_PASSWORD);
     await expect(page.getByTestId('change-password-signin-required')).toBeVisible();
 
-    expect(problems.filter((p) => !/Failed to load resource|net::ERR_CONNECTION_RESET|status of 401/.test(p))).toEqual([]);
+    expect(problems).toEqual([]);
   });
 });
