@@ -17,7 +17,7 @@ test.describe('POC auth', () => {
     const anonymousMe = await request.get('/api/auth/me');
     expect(anonymousMe.status()).toBe(200);
     expect(await anonymousMe.json()).toEqual({ authenticated: false });
-    expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(401);
+    expect((await request.post('/api/auth/change-password', { data: {} })).status()).toBe(401);
 
     const user = pocUser();
     const wrong = await request.post('/api/auth/login', { data: { username: user.username, password: `${user.password}-wrong` } });
@@ -37,11 +37,11 @@ test.describe('POC auth', () => {
     expect(me.status()).toBe(200);
     expect(await me.json()).toMatchObject({ authenticated: true, username: user.username });
 
-    expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(404);
+    expect((await request.post('/api/auth/change-password', { data: {} })).status()).toBe(400);
 
     expect((await request.post('/api/auth/logout')).status()).toBe(204);
     expect(await (await request.get('/api/auth/me')).json()).toEqual({ authenticated: false });
-    expect((await request.delete('/api/items/poc-auth-probe')).status()).toBe(401);
+    expect((await request.post('/api/auth/change-password', { data: {} })).status()).toBe(401);
   });
 
   test('signed-out page loads produce zero console errors', { tag: '@smoke' }, async ({ page }) => {
@@ -49,7 +49,7 @@ test.describe('POC auth', () => {
     page.on('console', (message) => message.type() === 'error' && problems.push(message.text()));
     page.on('pageerror', (error) => problems.push(String(error)));
 
-    for (const path of ['/', '/login', '/items']) {
+    for (const path of ['/', '/login', '/change-password']) {
       await page.goto(path);
       await expect(page.getByTestId('nav-login')).toBeVisible();
     }
@@ -65,7 +65,7 @@ test.describe('POC auth', () => {
     await page.reload();
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
 
-    await page.goto('/items');
+    await page.goto('/change-password');
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
     await expect(page.getByTestId('nav-login')).toHaveCount(0);
   });
