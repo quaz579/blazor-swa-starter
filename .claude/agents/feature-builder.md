@@ -36,7 +36,7 @@ each with its own tests. This is the agent an autonomous POC run leans on most.
    don't invent a new composition pattern if one is already established (e.g. isolated-worker
    `Program.cs` + `ConfigureFunctionsWebApplication`).
 3. Add the Web (Blazor) page/component that calls the endpoint through the existing API-client
-   pattern (e.g. `src/App.Web/Services/ItemsApiClient.cs`). The app's root component is
+   pattern: an API client in `src/App.Web/Services/` with one method per endpoint (whichever of `ItemsApiClient` or `HealthApiClient` exists shows the `HttpClient` wiring). The starter's Items sample is removed from generated products; don't recreate it, and delete sample code or tests your product doesn't need. The app's root component is
    `AppRoot.razor`, not `App.razor` — the framework's default name would collide with the `App`
    root namespace, so don't reintroduce it.
 4. Write/verify tests at each layer as you go, not as an afterthought at the end.

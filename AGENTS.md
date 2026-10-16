@@ -8,7 +8,8 @@ looks stale, fix it here rather than writing a second doc that disagrees with it
 
 A Blazor WebAssembly PWA + an Azure Functions **isolated-worker** managed API, deployed to
 **Azure Static Web Apps (Free tier)**, provisioned end-to-end by Terraform. The domain is
-deliberately generic (`Item`, a JSON blob per item) so the shape generalizes to a real feature.
+deliberately generic (the `Item` sample, a JSON blob per item) so the shape generalizes to a real feature.
+The starter's Items sample is removed from generated products; don't recreate it, and delete sample code or tests your product doesn't need. Use any sample as a pattern, not as code to keep.
 It exists so an agent can clone it and stand up a deployed app unattended — see `DEPLOY.md`.
 
 ## Dependency graph — one direction only
@@ -86,8 +87,8 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
   caller's other sessions. The signed-in nav link and `/change-password` page are always available when
   auth is enabled. A changed password survives restarts because seeding never overwrites an existing user.
   `GET /api/health` stays anonymous.
-- Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; `POST`/`DELETE`
-  `/api/items` are already gated when enabled. The enable script also drops the `allowedRoles`
+- Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; if the Items sample is present,
+  its `POST`/`DELETE` `/api/items` are already gated when enabled; gate your own write endpoints the same way. The enable script also drops the `allowedRoles`
   routes from `staticwebapp.config.json`, which would otherwise 401 sessions before the API sees them.
 - Write response bodies with `WriteAsJsonAsync`/`WriteStringAsync` only.
 - Specs: `tests/specs/poc-auth.spec.ts` skips itself without the fixture; `loginAs(page, user)` in
@@ -104,7 +105,7 @@ verdict — never by weakening an assertion, skipping the test, or loosening a m
 pass.
 
 Test methods in `src/App.Tests/` follow `MethodName_Scenario_ExpectedBehavior`, e.g.
-`GetItems_NoItemsStored_Returns200WithEmptyArray`, `CreateItem_NameExceeds100Chars_Returns400WithErrorBody`.
+`GetOrders_NoOrdersStored_Returns200WithEmptyArray`, `CreateOrder_NameExceeds100Chars_Returns400WithErrorBody`.
 Match this convention for new tests; don't invent a different shape.
 
 ## Where things live
@@ -153,7 +154,7 @@ Three tiers, in order, each cheaper to run than the next:
    therefore production storage** — it is not an isolated sandbox. Only the read-only `@smoke`
    subset (`tests/specs/smoke.spec.ts`) may run against one; CI's `smoke-preview` job enforces
    this automatically, and you must not run the full suite or any write path (`POST`/`DELETE`
-   against `/api/items`) against a preview or live URL by hand.
+   against any write endpoint) against a preview or live URL by hand.
 
 ## Ports: single source of truth
 

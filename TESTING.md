@@ -30,8 +30,8 @@ cleans up only the keys it created in `DisposeAsync`, so tests never collide and
 ## Test naming and TDD
 
 Method names follow `MethodName_Scenario_ExpectedBehavior`
-(`GetItems_NoItemsStored_Returns200WithEmptyArray`,
-`CreateItem_NameExceeds100Chars_Returns400WithErrorBody`). Every layer a change touches gets a
+(`GetOrders_NoOrdersStored_Returns200WithEmptyArray`,
+`CreateOrder_NameExceeds100Chars_Returns400WithErrorBody`). Every layer a change touches gets a
 test at that layer as part of the change, not after. A failing test gets fixed by fixing
 whichever side is actually wrong — never by weakening an assertion, adding `Skip`, or loosening
 a match; see `.claude/agents/test-engineer.md` for the full hard rules this repo holds tests to.
@@ -51,10 +51,10 @@ CRUD flows, validation, empty/error states, and a guard spec
 (`azurite-seed-guard.spec.ts`) that proves the fixture seeder refuses any connection string
 other than `UseDevelopmentStorage=true`.
 
-`staticwebapp.config.json` requires an authenticated session for `POST`/`DELETE` on
-`/api/items` (see `DEPLOY.md`'s "Write auth"), and the SWA CLI emulator enforces that locally
-too. The two specs that exercise those verbs (`items-create.spec.ts`, `items-delete.spec.ts`)
-call `loginAsAuthenticatedUser` from `tests/helpers/auth.ts` in a `beforeEach`, which sets the
+`staticwebapp.config.json` requires an authenticated session for write verbs (`POST`/`DELETE`)
+on gated routes (see `DEPLOY.md`'s "Write auth"; the starter's Items sample uses `/api/items`),
+and the SWA CLI emulator enforces that locally too. Specs that exercise those verbs (the Items
+sample's `items-create.spec.ts` and `items-delete.spec.ts`, if present) call `loginAsAuthenticatedUser` from `tests/helpers/auth.ts` in a `beforeEach`, which sets the
 emulator's `StaticWebAppsAuthCookie` directly — the same base64-JSON principal the emulator's
 own `/.auth/login/<provider>` mock form would set, without driving that page. The `@smoke`
 specs stay unauthenticated and read-only, since they also run against deployed preview
