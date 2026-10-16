@@ -87,7 +87,7 @@ rules:
 }
 ```
 
-`methods` scopes each rule to one verb, so `GET /api/items` and `GET /api/items/{id}` fall
+These rules belong to the Items sample (removed from generated products; use the same shape for your own write endpoints). `methods` scopes each rule to one verb, so `GET /api/items` and `GET /api/items/{id}` fall
 through unmatched and stay anonymous. Static Web Apps enforces `allowedRoles` itself, in front
 of the Function, using its built-in auth providers — Microsoft Entra ID and GitHub are
 pre-configured on Free tier (a custom OIDC/OAuth provider needs Standard tier). A visitor signs

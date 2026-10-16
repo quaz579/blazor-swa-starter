@@ -19,9 +19,9 @@ they're adjacent to a flow you're validating.
   seeding task "work."
 - **Never run a write or admin path against a deployed preview slot or any non-local environment.**
   A PR preview slot inherits production app settings, which means production storage. Verify
-  which endpoints are read-only before touching a live URL: in this codebase, `GET /api/health`,
-  `GET /api/items`, and `GET /api/items/{id}` call no write method, but `POST /api/items` and
-  `DELETE /api/items/{id}` write real blobs to the live container. When in doubt, grep the API for
+  which endpoints are read-only before touching a live URL: in this codebase, `GET /api/health`
+  and read-only `GET` endpoints call no write method, but `POST`/`DELETE` endpoints (for example the
+  Items sample's `/api/items`, if present) write real blobs to the live container. When in doubt, grep the API for
   which methods actually call a write/put/upload operation before deciding a flow is safe to
   exercise against a deployed slot — do not assume from the endpoint name.
 - **`start-e2e.sh` does not mutate any checked-in config file.** It launches the Blazor dev server
@@ -48,11 +48,11 @@ start, read the corresponding log under `.azurite/logs/` (`azurite-e2e.log`, `fu
 State which flows you exercised, against which environment (local stack vs. a specific preview
 URL), whether each flow was read-only or a write, and the pass/fail result. For a deployed-preview
 proof, describe what you actually observed in the browser (home page's API-health text reads
-`ok`, the items page rendered its list or empty state, no error banner) — not just "navigated
+`ok`, the page under test rendered its content or empty state, no error banner) — not just "navigated
 successfully."
 
 ## Concrete paths in this repo
 
-`tests/specs/`, `tests/pages/` (`home-page.ts`, `items-page.ts`),
+`tests/specs/`, `tests/pages/` (`home-page.ts`),
 `tests/helpers/seed-azurite-fixtures.ts`, `tests/specs/azurite-seed-guard.spec.ts`,
 `scripts/start-e2e.sh` / `scripts/stop-e2e.sh`, `scripts/ports.env`.

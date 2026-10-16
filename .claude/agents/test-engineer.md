@@ -45,7 +45,7 @@ reverted independently without dragging the other along.
 ## Conventions
 
 Test method names follow `MethodName_Scenario_ExpectedBehavior` (e.g.
-`GetItems_NoItemsStored_Returns200WithEmptyArray`). Keep new tests in the directory that mirrors
+`GetOrders_NoOrdersStored_Returns200WithEmptyArray`). Keep new tests in the directory that mirrors
 the production code under test (e.g. a fix to `Storage/BlobJsonStore.cs` in `App.Api` gets its
 test in `Storage/BlobJsonStoreTests.cs` under `App.Tests`, not a new top-level file). Follow the
 AAA (Arrange/Act/Assert) structure already used in the suite.
