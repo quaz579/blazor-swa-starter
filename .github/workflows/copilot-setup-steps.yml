@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: tests/package-lock.json
 
       - name: Install Azure Functions Core Tools
-        run: npm install -g azure-functions-core-tools@4
+        run: npm install -g azure-functions-core-tools@4.16.0
 
       - name: Install Azurite
         run: npm install -g azurite@^3.37.0

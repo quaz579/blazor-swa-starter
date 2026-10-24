@@ -4,14 +4,10 @@
 set -euo pipefail
 
 echo "Installing Azure Functions Core Tools..."
-wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb
-sudo dpkg -i packages-microsoft-prod.deb
-rm packages-microsoft-prod.deb
-sudo apt-get update
-sudo apt-get install -y azure-functions-core-tools-4
+npm i -g azure-functions-core-tools@4.16.0
 
 echo "Installing Azurite and the Static Web Apps CLI..."
-npm install -g azurite@^3.37.0 @azure/static-web-apps-cli
+npm install -g azurite@^3.37.0 @azure/static-web-apps-cli@2.1.0
 
 echo "Restoring and building the .NET solution..."
 dotnet restore

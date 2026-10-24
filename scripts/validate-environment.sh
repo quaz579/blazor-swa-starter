@@ -69,7 +69,13 @@ else
 fi
 
 if command -v swa >/dev/null 2>&1; then
-  ok "SWA CLI $(swa --version 2>/dev/null || echo present)"
+  swa_version="$(swa --version 2>/dev/null || true)"
+  if [[ "$swa_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] &&
+     [ "$(printf '%s\n' "$swa_version" "2.1.0" | sort -V | head -n1)" = "2.1.0" ]; then
+    ok "SWA CLI $swa_version (>= 2.1.0)"
+  else
+    fail "swa --version returned '$swa_version', expected >= 2.1.0"
+  fi
 else
   fail "swa (Static Web Apps CLI) not found on PATH"
 fi

@@ -74,7 +74,7 @@ jobs:
         # azurite pinned here (matching scripts/start-e2e.sh's fallback version)
         # so start-e2e.sh finds it on PATH instead of cold-downloading via npx,
         # which was blowing past the readiness window on a cold runner.
-        run: npm install -g azure-functions-core-tools@4 @azure/static-web-apps-cli azurite@3.37.0
+        run: npm install -g azure-functions-core-tools@4.16.0 @azure/static-web-apps-cli@2.1.0 azurite@3.37.0
 
       - name: Install Playwright test dependencies
         working-directory: tests
@@ -133,7 +133,7 @@ jobs:
           cache-dependency-path: tests/package-lock.json
 
       - name: Install Azure Functions Core Tools and SWA CLI
-        run: npm install -g azure-functions-core-tools@4 @azure/static-web-apps-cli azurite@3.37.0
+        run: npm install -g azure-functions-core-tools@4.16.0 @azure/static-web-apps-cli@2.1.0 azurite@3.37.0
 
       - name: Install Playwright test dependencies
         working-directory: tests

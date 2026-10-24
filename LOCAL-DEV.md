@@ -5,7 +5,7 @@
 - .NET SDK matching [`global.json`](global.json)
 - Node 22.x
 - [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local) v4 (`func`)
-- [SWA CLI](https://azure.github.io/static-web-apps-cli/) (`npm i -g @azure/static-web-apps-cli`)
+- [SWA CLI](https://azure.github.io/static-web-apps-cli/) (`npm i -g @azure/static-web-apps-cli@2.1.0`)
 - Azurite **>= 3.37.0** — `Azure.Storage.Blobs` 12.29.2 (used by `App.Api`) negotiates Storage
   REST API version `2026-06-06`; older Azurite builds reject that version and every blob call
   fails. The start scripts pin this for you (a global `azurite` install if present, else
