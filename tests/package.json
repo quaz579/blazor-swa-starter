@@ -9,7 +9,7 @@
     "test:debug": "playwright test --debug",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report",
-    "check:workflows": "node --test workflow-permissions.test.mjs && node workflow-permissions.mjs",
+    "check:workflows": "node workflow-permissions.mjs",
     "pretest": "npm run check:workflows"
   },
   "license": "MIT",

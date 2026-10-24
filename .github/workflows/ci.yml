@@ -70,7 +70,7 @@ jobs:
               exit 0
             fi
             if jq -e 'any(.runners[];
-              .name == "factory-apps-1" and .status == "online" and .busy == false
+              .name == "nuc-org-1" and .status == "online" and .busy == false
               and ([.labels[].name] | contains(["self-hosted","Linux","X64","factory-apps"])))
             ' "$response" >/dev/null; then
               found=true
