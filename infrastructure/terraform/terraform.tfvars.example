@@ -8,6 +8,7 @@ subscription_id = "00000000-0000-0000-0000-000000000000"
 
 project_name = "swapp"
 location     = "eastus2"
+swa_location = "centralus"
 environment  = "dev"
 
 github_owner      = "your-github-org-or-user"
