@@ -102,6 +102,72 @@ To open the API back up for your own fork, delete both route rules above from
 Locally, the SWA CLI emulator enforces `allowedRoles` the same way, so the Playwright specs
 that exercise `POST`/`DELETE` authenticate first — see `TESTING.md`.
 
+## Infrastructure CI
+
+`.github/workflows/infra.yml` (`Infra`) plans same-repo PRs targeting `main` and applies pushes
+to `main`, path-filtered to `infrastructure/terraform/**` and the workflow. Every job requires
+`github.repository == 'quaz579/blazor-swa-starter'` and `STARTER_INFRA_CI=true`, keeping template
+copies inert. Missing required variables fail explicitly after gating. Fork/Dependabot PRs
+are skipped; the trigger is `pull_request`, never `pull_request_target` or `workflow_run`.
+Each job grants `contents: read` and `id-token: write`; only plan grants `pull-requests: write`.
+Actions are SHA-pinned, jobs have timeouts, plans cancel per PR, and applies serialize without
+cancellation. The first shell step after checkout asserts HEAD equals the push SHA.
+
+Two Azure OIDC identities replace stored credentials. Apply trusts exactly
+`repo:quaz579/blazor-swa-starter:ref:refs/heads/main`, so credentials need no GitHub Environment.
+Provider registration is disabled; plan uses `-lock=false`, apply uses backend blob lease locking.
+Same-repo writers can execute PR code with the key-reading plan identity: trust collaborators
+and protect main. Fork PRs receive no OIDC token or secrets from this workflow.
+
+Deletes/replacements **fail the PR check and refuse apply**, reporting **destructive: needs
+manual apply** with addresses/actions in the summary and upserted `<!-- starter-infra-plan -->`
+PR comment. Review and run `tofu apply` with your own login; failures use summaries/checks,
+not issues. Hard refusal needs no extra setup; a solo-owner `infra-destructive` Environment
+is self-approvable, while subject trust already pins credentials to main. Requiring `Infra plan`
+therefore means legitimate destructive PRs need an owner bypass to merge.
+
+Main plans fresh against current state: PR plans are advisory. Reports include SHA-256 of
+sorted `address:actions` lines for comparison (not an attribute-value attestation). The guard
+and applying that job's exact saved `tfplan` enforce safety. Only plan takes
+`-exclude=github_actions_secret.swa_deploy_token`; saved-plan apply needs no exclusion or GitHub
+provider token. **SWA replacement refreshes `AZURE_STATIC_WEB_APPS_API_TOKEN` only via manual
+apply without exclusion.** Public logs capture plan output to a runner file, showing only the
+last 40 diagnostic lines on failure; comments/summaries expose only addresses/actions. No plan
+artifacts are uploaded. `if: always()` deletes plans, JSON, logs and `.terraform`; diagnostic
+tails can still contain sensitive error details.
+
+One-time owner procedure (matching copy-paste command blocks are in the implementation
+handoff's `owner-steps.txt`; use the owner's Azure/GitHub login):
+
+1. Create `rg-swastarter-tfstate`, a unique Standard_LRS account (TLS 1.2, HTTPS only, public
+   blobs/shared keys disabled), versioning, 30-day blob/container soft delete, `tfstate` container,
+   RG CanNotDelete lock, and owner `Storage Blob Data Owner` on the account.
+2. Create `id-starter-infra-plan` and `id-starter-infra-apply` there. Federate GitHub's issuer and
+   `api://AzureADTokenExchange` audience to `repo:quaz579/blazor-swa-starter:pull_request` and
+   `repo:quaz579/blazor-swa-starter:ref:refs/heads/main`, respectively.
+3. Grant plan RG `Reader`, custom `Starter Infra Plan Secret Reader` (storage listKeys,
+   SWA listSecrets/listAppSettings, workspace sharedKeys), and state-container `Storage Blob
+   Data Reader`. RG-only Reader and precise provider list calls are UNVERIFIED; diagnose before
+   subscription Reader fallback. Application Insights GET should suffice (UNVERIFIED).
+4. Grant apply `Contributor` only on the **already existing** `rg-swastarter-dev`, plus state-container
+   `Storage Blob Data Contributor`; no subscription role or role-assignment rights.
+5. **PR #18 manual apply first**, then back up authoritative state privately and create local
+   gitignored `backend_override.tf` with `terraform { backend "azurerm" { use_azuread_auth = true
+   use_oidc = true } }` (format as multiline HCL). Run `tofu init -migrate-state -force-copy`
+   with backend configs `resource_group_name`, `storage_account_name`, `container_name=tfstate`,
+   `key=blazor-swa-starter.tfstate`, and `use_oidc=false` for owner CLI login. With CI-equivalent
+   inputs and no tfvars overrides, `tofu plan -exclude=github_actions_secret.swa_deploy_token`
+   must show **no changes** before enabling.
+6. Set `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `STARTER_INFRA_PLAN_CLIENT_ID`,
+   `STARTER_INFRA_APPLY_CLIENT_ID`, `STARTER_INFRA_STATE_RG`, `STARTER_INFRA_STATE_ACCOUNT`,
+   `STARTER_INFRA_STATE_CONTAINER=tfstate`, `STARTER_INFRA_STATE_KEY=blazor-swa-starter.tfstate`,
+   `STARTER_INFRA_PROJECT_NAME=swastarter`, `STARTER_INFRA_ENVIRONMENT=dev`,
+   `STARTER_INFRA_LOCATION=eastus2`. Owner/repo derive from GitHub context. Optional
+   `STARTER_INFRA_ALLOWED_ORIGINS` is a JSON list mapped to `TF_VAR_allowed_origins` only when
+   nonempty; match deployed-SWA CORS additions. Set **`STARTER_INFRA_CI=true` last**. No secrets.
+7. Optionally require stable `Infra plan` through branch protection; path-filtered runs can
+   leave unrelated PRs waiting, and destructive PRs need the bypass above.
+
 ## Teardown
 
 ```sh
