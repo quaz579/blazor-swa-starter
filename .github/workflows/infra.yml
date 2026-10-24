@@ -1,0 +1,370 @@
+name: Infra
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - infrastructure/terraform/**
+      - .github/workflows/infra.yml
+  push:
+    branches: [main]
+    paths:
+      - infrastructure/terraform/**
+      - .github/workflows/infra.yml
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Infra plan
+    if: github.repository == 'quaz579/blazor-swa-starter' && vars.STARTER_INFRA_CI == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    concurrency:
+      group: starter-infra-plan-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: infrastructure/terraform
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.STARTER_INFRA_PLAN_CLIENT_ID }}
+      ARM_RESOURCE_PROVIDER_REGISTRATIONS: none
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_project_name: ${{ vars.STARTER_INFRA_PROJECT_NAME }}
+      TF_VAR_environment: ${{ vars.STARTER_INFRA_ENVIRONMENT }}
+      TF_VAR_location: ${{ vars.STARTER_INFRA_LOCATION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_github_repository: ${{ github.event.repository.name }}
+      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG || 'rg-swastarter-dev' }}
+      STATE_ACCOUNT: ${{ vars.STARTER_INFRA_STATE_ACCOUNT }}
+      STATE_CONTAINER: ${{ vars.STARTER_INFRA_STATE_CONTAINER }}
+      STATE_KEY: ${{ vars.STARTER_INFRA_STATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require repository variables
+        run: |
+          set -euo pipefail
+          missing=0
+          while read -r env_name variable; do
+            if [[ -z "${!env_name}" ]]; then
+              echo "::error::Missing repository variable: $variable (STARTER_INFRA_CI is enabled)"
+              missing=1
+            fi
+          done <<'VARIABLES'
+          ARM_TENANT_ID AZURE_TENANT_ID
+          ARM_SUBSCRIPTION_ID AZURE_SUBSCRIPTION_ID
+          ARM_CLIENT_ID STARTER_INFRA_PLAN_CLIENT_ID
+          TF_VAR_project_name STARTER_INFRA_PROJECT_NAME
+          TF_VAR_environment STARTER_INFRA_ENVIRONMENT
+          TF_VAR_location STARTER_INFRA_LOCATION
+          STATE_RG STARTER_INFRA_STATE_RG
+          STATE_ACCOUNT STARTER_INFRA_STATE_ACCOUNT
+          STATE_CONTAINER STARTER_INFRA_STATE_CONTAINER
+          STATE_KEY STARTER_INFRA_STATE_KEY
+          VARIABLES
+          if [[ "$STATE_RG" != rg-swastarter-dev ]]; then
+            echo "::error::STARTER_INFRA_STATE_RG must be rg-swastarter-dev"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Set optional allowed origins
+        env:
+          ALLOWED_ORIGINS: ${{ vars.STARTER_INFRA_ALLOWED_ORIGINS }}
+        run: |
+          if [[ -n "$ALLOWED_ORIGINS" ]]; then
+            origins=$(printf '%s' "$ALLOWED_ORIGINS" | jq -ce 'if type == "array" and all(.[]; type == "string") then . else error("expected JSON list of strings") end')
+            printf 'TF_VAR_allowed_origins=%s\n' "$origins" >> "$GITHUB_ENV"
+          fi
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4
+        with:
+          tofu_version: 1.11.4
+          tofu_wrapper: false
+
+      - name: Initialize OIDC backend
+        run: |
+          cat > backend_override.tf <<'BACKEND'
+          terraform {
+            backend "azurerm" {
+              use_azuread_auth = true
+              use_oidc         = true
+            }
+          }
+          BACKEND
+          tofu init -input=false -no-color \
+            -backend-config="resource_group_name=$STATE_RG" \
+            -backend-config="storage_account_name=$STATE_ACCOUNT" \
+            -backend-config="container_name=$STATE_CONTAINER" \
+            -backend-config="key=$STATE_KEY"
+
+      - name: Validate configuration
+        run: |
+          tofu fmt -check -recursive
+          tofu validate -no-color
+
+      - name: Plan infrastructure
+        run: |
+          set +e
+          tofu plan -input=false -no-color -out=tfplan -detailed-exitcode -lock=false -exclude=github_actions_secret.swa_deploy_token > plan.log 2>&1
+          status=$?
+          set -e
+          if [[ "$status" != 0 && "$status" != 2 ]]; then
+            echo "::error::Plan infrastructure: OpenTofu plan failed"
+            exit "$status"
+          fi
+          tofu show -json tfplan > plan.json 2> show.log
+
+      - name: Summarize addresses and guard destructive changes
+        run: |
+          jq -e -s 'length == 1 and (.[0] | type == "object" and (.format_version | type == "string" and length > 0) and (.resource_changes // [] | type == "array"))' plan.json > /dev/null
+          jq -r '.resource_changes[]? | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > actions.txt
+          jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > destructive.txt
+          fingerprint=$(sha256sum actions.txt | cut -d ' ' -f 1)
+          {
+            echo '<!-- starter-infra-plan -->'
+            echo '### Infrastructure plan'
+            printf 'Plan fingerprint (SHA-256): %s\n\n' "$fingerprint"
+            echo 'Resource addresses and actions only:'
+            echo '```text'
+            cat actions.txt
+            echo '```'
+            if [[ -s destructive.txt ]]; then
+              echo '**destructive: needs manual apply**'
+              echo 'Review these deletes/replacements and run tofu apply by hand with your own login:'
+              echo '```text'
+              cat destructive.txt
+              echo '```'
+            fi
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upsert plan comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          api="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+          auth_file=$(mktemp)
+          comments_file=$(mktemp)
+          payload_file=$(mktemp)
+          trap 'rm -f "$auth_file" "$comments_file" "$payload_file"' EXIT
+          chmod 600 "$auth_file"
+          printf 'Authorization: Bearer %s\n' "$GH_TOKEN" > "$auth_file"
+          page=1
+          comment_id=""
+          while :; do
+            curl --fail --silent --show-error -H @"$auth_file" "$api/issues/$PR_NUMBER/comments?per_page=100&page=$page" > "$comments_file"
+            comment_id=$(jq -r '[.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- starter-infra-plan -->")))][0].id // empty' "$comments_file")
+            if [[ -n "$comment_id" ]] || [[ "$(jq length "$comments_file")" -lt 100 ]]; then
+              break
+            fi
+            page=$((page + 1))
+          done
+          jq -n --rawfile body summary.md '{body: $body}' > "$payload_file"
+          if [[ -n "$comment_id" ]]; then
+            curl --fail --silent --show-error -o /dev/null -X PATCH -H @"$auth_file" -H 'Content-Type: application/json' "$api/issues/comments/$comment_id" --data-binary @"$payload_file"
+          else
+            curl --fail --silent --show-error -o /dev/null -X POST -H @"$auth_file" -H 'Content-Type: application/json' "$api/issues/$PR_NUMBER/comments" --data-binary @"$payload_file"
+          fi
+
+      - name: Refuse deletes and replacements
+        run: |
+          if [[ -s destructive.txt ]]; then
+            echo "::error::destructive: needs manual apply; review the resource list in the job summary and run tofu apply with your own login"
+            exit 1
+          fi
+
+      - name: Delete plans and providers
+        if: always()
+        run: |
+          rm -rf tfplan plan.json .terraform backend_override.tf plan.log show.log apply.log actions.txt destructive.txt summary.md
+
+  apply:
+    name: Infra apply
+    if: github.repository == 'quaz579/blazor-swa-starter' && vars.STARTER_INFRA_CI == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: starter-infra-apply
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: infrastructure/terraform
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.STARTER_INFRA_APPLY_CLIENT_ID }}
+      ARM_RESOURCE_PROVIDER_REGISTRATIONS: none
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_project_name: ${{ vars.STARTER_INFRA_PROJECT_NAME }}
+      TF_VAR_environment: ${{ vars.STARTER_INFRA_ENVIRONMENT }}
+      TF_VAR_location: ${{ vars.STARTER_INFRA_LOCATION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_github_repository: ${{ github.event.repository.name }}
+      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG || 'rg-swastarter-dev' }}
+      STATE_ACCOUNT: ${{ vars.STARTER_INFRA_STATE_ACCOUNT }}
+      STATE_CONTAINER: ${{ vars.STARTER_INFRA_STATE_CONTAINER }}
+      STATE_KEY: ${{ vars.STARTER_INFRA_STATE_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require current main tip
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          main_tip=$(git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/main | cut -f 1)
+          if [[ "$main_tip" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Stale run: main has advanced; do not apply. Run infrastructure CI for the current main tip."
+            exit 1
+          fi
+
+      - name: Require repository variables
+        run: |
+          set -euo pipefail
+          missing=0
+          while read -r env_name variable; do
+            if [[ -z "${!env_name}" ]]; then
+              echo "::error::Missing repository variable: $variable (STARTER_INFRA_CI is enabled)"
+              missing=1
+            fi
+          done <<'VARIABLES'
+          ARM_TENANT_ID AZURE_TENANT_ID
+          ARM_SUBSCRIPTION_ID AZURE_SUBSCRIPTION_ID
+          ARM_CLIENT_ID STARTER_INFRA_APPLY_CLIENT_ID
+          TF_VAR_project_name STARTER_INFRA_PROJECT_NAME
+          TF_VAR_environment STARTER_INFRA_ENVIRONMENT
+          TF_VAR_location STARTER_INFRA_LOCATION
+          STATE_RG STARTER_INFRA_STATE_RG
+          STATE_ACCOUNT STARTER_INFRA_STATE_ACCOUNT
+          STATE_CONTAINER STARTER_INFRA_STATE_CONTAINER
+          STATE_KEY STARTER_INFRA_STATE_KEY
+          VARIABLES
+          if [[ "$STATE_RG" != rg-swastarter-dev ]]; then
+            echo "::error::STARTER_INFRA_STATE_RG must be rg-swastarter-dev"
+            missing=1
+          fi
+          exit "$missing"
+
+      - name: Set optional allowed origins
+        env:
+          ALLOWED_ORIGINS: ${{ vars.STARTER_INFRA_ALLOWED_ORIGINS }}
+        run: |
+          if [[ -n "$ALLOWED_ORIGINS" ]]; then
+            origins=$(printf '%s' "$ALLOWED_ORIGINS" | jq -ce 'if type == "array" and all(.[]; type == "string") then . else error("expected JSON list of strings") end')
+            printf 'TF_VAR_allowed_origins=%s\n' "$origins" >> "$GITHUB_ENV"
+          fi
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4
+        with:
+          tofu_version: 1.11.4
+          tofu_wrapper: false
+
+      - name: Initialize OIDC backend
+        run: |
+          cat > backend_override.tf <<'BACKEND'
+          terraform {
+            backend "azurerm" {
+              use_azuread_auth = true
+              use_oidc         = true
+            }
+          }
+          BACKEND
+          tofu init -input=false -no-color \
+            -backend-config="resource_group_name=$STATE_RG" \
+            -backend-config="storage_account_name=$STATE_ACCOUNT" \
+            -backend-config="container_name=$STATE_CONTAINER" \
+            -backend-config="key=$STATE_KEY"
+
+      - name: Validate configuration
+        run: |
+          tofu fmt -check -recursive
+          tofu validate -no-color
+
+      - name: Plan infrastructure
+        run: |
+          set +e
+          tofu plan -input=false -no-color -out=tfplan -detailed-exitcode -exclude=github_actions_secret.swa_deploy_token > plan.log 2>&1
+          status=$?
+          set -e
+          if [[ "$status" != 0 && "$status" != 2 ]]; then
+            echo "::error::Plan infrastructure: OpenTofu plan failed; last 40 redacted diagnostic lines follow"
+            tail -n 40 plan.log | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/[REDACTED-GUID]/g'
+            exit "$status"
+          fi
+          tofu show -json tfplan > plan.json 2> show.log
+
+      - name: Summarize addresses and guard destructive changes
+        run: |
+          jq -e -s 'length == 1 and (.[0] | type == "object" and (.format_version | type == "string" and length > 0) and (.resource_changes // [] | type == "array"))' plan.json > /dev/null
+          jq -r '.resource_changes[]? | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > actions.txt
+          jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > destructive.txt
+          fingerprint=$(sha256sum actions.txt | cut -d ' ' -f 1)
+          {
+            echo '<!-- starter-infra-plan -->'
+            echo '### Infrastructure plan'
+            printf 'Plan fingerprint (SHA-256): %s\n\n' "$fingerprint"
+            echo 'Resource addresses and actions only:'
+            echo '```text'
+            cat actions.txt
+            echo '```'
+            if [[ -s destructive.txt ]]; then
+              echo '**destructive: needs manual apply**'
+              echo 'Review these deletes/replacements and run tofu apply by hand with your own login:'
+              echo '```text'
+              cat destructive.txt
+              echo '```'
+            fi
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Refuse deletes and replacements
+        run: |
+          if [[ -s destructive.txt ]]; then
+            echo "::error::destructive: needs manual apply; review the resource list in the job summary and run tofu apply with your own login"
+            exit 1
+          fi
+
+      - name: Apply saved plan
+        run: |
+          if ! tofu apply -input=false -no-color tfplan > apply.log 2>&1; then
+            echo "::error::OpenTofu apply failed; last 40 redacted diagnostic lines follow"
+            tail -n 40 apply.log | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/[REDACTED-GUID]/g'
+            exit 1
+          fi
+          echo 'Saved plan applied successfully.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report apply failure
+        if: failure()
+        run: |
+          echo 'Infrastructure apply failed or was blocked. Review this failed check and the resource list above; use your own login for any manual tofu apply.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete plans and providers
+        if: always()
+        run: |
+          rm -rf tfplan plan.json .terraform backend_override.tf plan.log show.log apply.log actions.txt destructive.txt summary.md
+
