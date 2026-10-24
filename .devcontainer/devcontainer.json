@@ -1,6 +1,6 @@
 {
   "name": "blazor-swa-starter",
-  "image": "mcr.microsoft.com/devcontainers/dotnet:1-10.0-noble",
+  "image": "mcr.microsoft.com/devcontainers/dotnet:2.3.2-10.0-noble",
 
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
