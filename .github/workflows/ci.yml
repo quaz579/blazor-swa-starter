@@ -70,8 +70,9 @@ jobs:
               exit 0
             fi
             if jq -e 'any(.runners[];
-              .name == "nuc-org-1" and .status == "online" and .busy == false
-              and ([.labels[].name] | contains(["self-hosted","Linux","X64","factory-apps"])))
+              . as $runner | .name == "nuc-org-1" and .status == "online" and .busy == false
+              and all("self-hosted", "Linux", "X64", "factory-apps";
+                . as $label | any($runner.labels[]; .name == $label)))
             ' "$response" >/dev/null; then
               found=true
             fi
@@ -212,9 +213,9 @@ jobs:
           retention-days: 7
 
   select-e2e-poc-auth:
-    needs: [build-test, e2e]
+    needs: [build-test]
     if: >-
-      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.build-test.result == 'success' && needs.e2e.result == 'success'
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.build-test.result == 'success'
     runs-on: ubuntu-slim
     timeout-minutes: 2
     permissions: {}
