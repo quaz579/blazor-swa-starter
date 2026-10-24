@@ -126,3 +126,34 @@ is used here not because it "extends support," but because `dotnet-isolated:9.0`
 Azure Static Web Apps **managed functions** currently accept — there is no `dotnet-isolated:10.0`
 runtime option, so `net9.0` cannot be bumped to `net10.0` without breaking the managed-functions
 deploy.
+
+## Optional private org-app runner profile
+
+The public starter uses hosted CI by default. Repository variable `RUNNER_PROFILE=org-app`
+enables the nuc profile only for private `bengrossmandotus` repositories. PRs require a
+same-repo head and OWNER, MEMBER or COLLABORATOR author association; fork/untrusted PRs
+stay hosted and never run the status selector. CI and preview cleanup retain their original
+job IDs and test/deploy prerequisites.
+
+With `RUNNER_MODE=hosted`, all jobs go directly to hosted without selection. Otherwise,
+`RUNNER_FALLBACK_ENABLED=true` enables checkout-free `ubuntu-slim` selection at each job
+boundary using the repository secret `RUNNER_STATUS_TOKEN`. It checks paginated org inventory
+for idle online `factory-apps-1` with `self-hosted`, `Linux`, `X64`, `factory-apps` labels.
+Missing credentials, invalid inventory or bounded API/transport failures choose hosted.
+Auth E2E selection waits for E2E to finish so the fanout cannot share one idle snapshot.
+A denied/failed enabled selector blocks dependent jobs rather than bypassing CI.
+
+Missing/false `RUNNER_FALLBACK_ENABLED` skips every hosted selector and sends trusted jobs,
+including deploy and smoke, directly to the nuc. Clear forced-hosted mode before relying on
+this zero-hosted-minutes configuration. An unavailable nuc then requires infrastructure repair;
+no executable fallback exists without hosted entitlement. A selector snapshot is not a runner
+reservation; queue failover still requires the separate control-plane watchdog.
+
+Before first push, provisioning must verify the repo is private, install repository-level
+selector variables and the status secret, and verify selected runner-group access for that
+repo ID. Labels and runner inventory do not establish authorization. Never rely on org secret
+inheritance. Status credentials need only org runner-read and belong only to trusted preflight;
+factory/personal credentials and runner enrollment credentials never belong in app jobs.
+Keep the profile disabled until the isolated unprivileged app runner, single-slot capacity,
+rootless Docker Azure deployment and live fallback proofs pass. The profile does not enable
+or alter the factory's separate Azure per-product runner feature.

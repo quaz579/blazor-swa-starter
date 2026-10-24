@@ -9,8 +9,88 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  select-close-preview:
+    if: >-
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: |
+          set -euo pipefail
+          hosted() {
+            printf 'labels=["ubuntu-latest"]\n' >> "$GITHUB_OUTPUT"
+            printf 'selected hosted: %s\n' "$1"
+          }
+          if [ -z "${RUNNER_STATUS_TOKEN:-}" ]; then
+            hosted 'status credential unavailable'
+            exit 0
+          fi
+          endpoint="https://api.github.com/orgs/bengrossmandotus/actions/runners"
+          response="$(mktemp)"
+          trap 'rm -f "$response"' EXIT
+          found=false
+          for page in $(seq 1 10); do
+            if ! status="$(printf 'Authorization: Bearer %s\n' "$RUNNER_STATUS_TOKEN" | curl -sS \
+              --connect-timeout 3 --max-time 5 -H @- \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -o "$response" -w '%{http_code}' \
+              "$endpoint?per_page=100&page=$page" 2>/dev/null)"; then
+              hosted 'status transport failure or timeout'
+              exit 0
+            fi
+            if [ "$status" != 200 ]; then
+              hosted 'status API rejected the request'
+              exit 0
+            fi
+            if ! jq -e '
+              type == "object" and (.total_count | type == "number" and . >= 0 and . == floor)
+              and (.runners | type == "array" and length <= 100)
+              and (.total_count >= (.runners | length))
+              and all(.runners[];
+                (.name | type == "string") and (.status | type == "string")
+                and (.busy | type == "boolean") and (.labels | type == "array")
+                and all(.labels[]; .name | type == "string"))
+            ' "$response" >/dev/null 2>&1; then
+              hosted 'invalid runner inventory'
+              exit 0
+            fi
+            if jq -e 'any(.runners[];
+              .name == "factory-apps-1" and .status == "online" and .busy == false
+              and ([.labels[].name] | contains(["self-hosted","Linux","X64","factory-apps"])))
+            ' "$response" >/dev/null; then
+              found=true
+            fi
+            count="$(jq '.runners | length' "$response")"
+            total="$(jq '.total_count' "$response")"
+            if [ "$count" -lt 100 ] && [ "$(( (page - 1) * 100 + count ))" -lt "$total" ]; then
+              hosted 'incomplete runner inventory'
+              exit 0
+            fi
+            if [ "$(( page * 100 ))" -ge "$total" ]; then
+              if [ "$found" = true ]; then
+                printf 'labels=["self-hosted","Linux","X64","factory-apps"]\n' >> "$GITHUB_OUTPUT"
+                echo 'selected nuc: app listener online and idle'
+              else
+                hosted 'app listener unavailable or busy'
+              fi
+              exit 0
+            fi
+          done
+          hosted 'runner inventory pagination limit'
+
   close-preview:
-    runs-on: ubuntu-latest
+    needs: [select-close-preview]
+    if: >-
+      !cancelled() && (true) && (needs.select-close-preview.result == 'success' || (needs.select-close-preview.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-close-preview.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     permissions:
       contents: read
