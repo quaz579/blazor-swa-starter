@@ -126,3 +126,18 @@ is used here not because it "extends support," but because `dotnet-isolated:9.0`
 Azure Static Web Apps **managed functions** currently accept — there is no `dotnet-isolated:10.0`
 runtime option, so `net9.0` cannot be bumped to `net10.0` without breaking the managed-functions
 deploy.
+
+## Optional private org-app runner profile
+
+Set `RUNNER_PROFILE=org-app` for private `bengrossmandotus` apps. Only same-repo PRs
+from OWNER, MEMBER or COLLABORATOR authors qualify; other PRs stay hosted and cannot
+access the status secret. Org apps default to `RUNNER_FALLBACK_ENABLED=true`: a
+checkout-free hosted preflight uses `RUNNER_STATUS_TOKEN` (org runner-read) to prefer
+online, idle `nuc-org-1` with label `factory-apps`, falling back to hosted on busy,
+offline or API failure. `RUNNER_MODE=hosted` forces hosted without a preflight;
+missing/false fallback sends eligible jobs directly to the nuc without a preflight.
+The Default org runner group permits all repositories; no enrollment hook is needed.
+Org workflow defaults are read-only. Every job declares `permissions:` explicitly;
+`cd tests && npm run check:workflows` checks this explicitly.
+The e2e and e2e-poc-auth jobs run in parallel after build-test for every profile;
+the single nuc listener queues jobs when both selectors choose it.

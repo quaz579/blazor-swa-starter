@@ -16,8 +16,89 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  select-build-test:
+    if: >-
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: &org-app-selector |
+          set -euo pipefail
+          hosted() {
+            printf 'labels=["ubuntu-latest"]\n' >> "$GITHUB_OUTPUT"
+            printf 'selected hosted: %s\n' "$1"
+          }
+          if [ -z "${RUNNER_STATUS_TOKEN:-}" ]; then
+            hosted 'status credential unavailable'
+            exit 0
+          fi
+          endpoint="https://api.github.com/orgs/bengrossmandotus/actions/runners"
+          response="$(mktemp)"
+          trap 'rm -f "$response"' EXIT
+          found=false
+          for page in $(seq 1 10); do
+            if ! status="$(printf 'Authorization: Bearer %s\n' "$RUNNER_STATUS_TOKEN" | curl -sS \
+              --connect-timeout 3 --max-time 5 -H @- \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -o "$response" -w '%{http_code}' \
+              "$endpoint?per_page=100&page=$page" 2>/dev/null)"; then
+              hosted 'status transport failure or timeout'
+              exit 0
+            fi
+            if [ "$status" != 200 ]; then
+              hosted 'status API rejected the request'
+              exit 0
+            fi
+            if ! jq -e '
+              type == "object" and (.total_count | type == "number" and . >= 0 and . == floor)
+              and (.runners | type == "array" and length <= 100)
+              and (.total_count >= (.runners | length))
+              and all(.runners[];
+                (.name | type == "string") and (.status | type == "string")
+                and (.busy | type == "boolean") and (.labels | type == "array")
+                and all(.labels[]; .name | type == "string"))
+            ' "$response" >/dev/null 2>&1; then
+              hosted 'invalid runner inventory'
+              exit 0
+            fi
+            if jq -e 'any(.runners[];
+              . as $runner | .name == "nuc-org-1" and .status == "online" and .busy == false
+              and all("self-hosted", "Linux", "X64", "factory-apps";
+                . as $label | any($runner.labels[]; .name == $label)))
+            ' "$response" >/dev/null; then
+              found=true
+            fi
+            count="$(jq '.runners | length' "$response")"
+            total="$(jq '.total_count' "$response")"
+            if [ "$count" -lt 100 ] && [ "$(( (page - 1) * 100 + count ))" -lt "$total" ]; then
+              hosted 'incomplete runner inventory'
+              exit 0
+            fi
+            if [ "$(( page * 100 ))" -ge "$total" ]; then
+              if [ "$found" = true ]; then
+                printf 'labels=["self-hosted","Linux","X64","factory-apps"]\n' >> "$GITHUB_OUTPUT"
+                echo 'selected nuc: app listener online and idle'
+              else
+                hosted 'app listener unavailable or busy'
+              fi
+              exit 0
+            fi
+          done
+          hosted 'runner inventory pagination limit'
+
   build-test:
-    runs-on: ubuntu-latest
+    needs: [select-build-test]
+    if: >-
+      !cancelled() && (true) && (needs.select-build-test.result == 'success' || (needs.select-build-test.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-build-test.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -28,6 +109,8 @@ jobs:
         run: scripts/generate-agent-views.sh --check
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
@@ -51,9 +134,27 @@ jobs:
           path: TestResults/
           retention-days: 7
 
+  select-e2e:
+    needs: [build-test]
+    if: >-
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.build-test.result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: *org-app-selector
+
   e2e:
-    needs: build-test
-    runs-on: ubuntu-latest
+    needs: [build-test, select-e2e]
+    if: >-
+      !cancelled() && (true) && needs.build-test.result == 'success' && (needs.select-e2e.result == 'success' || (needs.select-e2e.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-e2e.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -61,6 +162,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
@@ -82,7 +185,7 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps ' || '' }}chromium
 
       # start-e2e.sh gives `func start` and `dotnet run` a bounded readiness
       # window, and both build before they listen. This runner never built, so
@@ -113,9 +216,27 @@ jobs:
           path: tests/playwright-report/
           retention-days: 7
 
+  select-e2e-poc-auth:
+    needs: [build-test]
+    if: >-
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.build-test.result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: *org-app-selector
+
   e2e-poc-auth:
-    needs: build-test
-    runs-on: ubuntu-latest
+    needs: [build-test, select-e2e-poc-auth]
+    if: >-
+      !cancelled() && (true) && needs.build-test.result == 'success' && (needs.select-e2e-poc-auth.result == 'success' || (needs.select-e2e-poc-auth.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-e2e-poc-auth.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 20
     permissions:
       contents: read
@@ -123,6 +244,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
@@ -141,7 +264,7 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps ' || '' }}chromium
 
       - name: Enable POC auth
         run: node scripts/enable-poc-auth.mjs
@@ -172,9 +295,27 @@ jobs:
             tests/test-results/
           retention-days: 7
 
-  deploy:
+  select-deploy:
     needs: [e2e, e2e-poc-auth]
-    runs-on: ubuntu-latest
+    if: >-
+      !cancelled() && (true) && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.e2e.result == 'success' && needs.e2e-poc-auth.result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: *org-app-selector
+
+  deploy:
+    needs: [e2e, e2e-poc-auth, select-deploy]
+    if: >-
+      !cancelled() && (true) && needs.e2e.result == 'success' && needs.e2e-poc-auth.result == 'success' && (needs.select-deploy.result == 'success' || (needs.select-deploy.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-deploy.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 15
     permissions:
       contents: read
@@ -219,10 +360,27 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: close
 
+  select-smoke-preview:
+    needs: [deploy]
+    if: >-
+      !cancelled() && (github.event_name == 'pull_request') && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.deploy.result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: *org-app-selector
+
   smoke-preview:
-    needs: deploy
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    needs: [deploy, select-smoke-preview]
+    if: >-
+      !cancelled() && (github.event_name == 'pull_request') && needs.deploy.result == 'success' && (needs.select-smoke-preview.result == 'success' || (needs.select-smoke-preview.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-smoke-preview.outputs.labels) || '["ubuntu-latest"]') }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -241,7 +399,7 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps ' || '' }}chromium
 
       - name: Wait for preview environment to come online
         run: |
