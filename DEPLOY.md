@@ -30,7 +30,8 @@ location          = "eastus2"
 ```
 
 The Terraform commands in this doc were exercised through OpenTofu (`.terraform.lock.hcl`
-records `registry.opentofu.org` provider sources); `versions.tf` requires Terraform/OpenTofu
+is committed with checksums for Linux AMD64 and macOS ARM64/AMD64 and records
+`registry.opentofu.org` provider sources); `versions.tf` requires Terraform/OpenTofu
 `>= 1.5.0`.
 
 **`terraform.tfstate` holds the Static Web Apps deployment token in plaintext** (it's the
@@ -112,13 +113,15 @@ copies inert. Missing required variables fail explicitly after gating. `STARTER_
 are skipped; the trigger is `pull_request`, never `pull_request_target` or `workflow_run`.
 Each job grants `contents: read` and `id-token: write`; only plan grants `pull-requests: write`.
 Actions are SHA-pinned, jobs have timeouts, plans cancel per PR, and applies serialize without
-cancellation. The first shell step after checkout asserts HEAD equals the push SHA.
+cancellation. Before planning, apply checks the remote `main` tip against the push SHA and
+refuses stale runs, including reruns of older pushes.
 
 Two Azure OIDC identities replace stored credentials. Apply trusts exactly
 `repo:quaz579/blazor-swa-starter:ref:refs/heads/main`, so credentials need no GitHub Environment.
 Provider registration is disabled; plan uses `-lock=false`, apply uses backend blob lease locking.
 Same-repo writers can execute PR code with the key-reading plan identity: trust collaborators
 and protect main. Fork PRs receive no OIDC token or secrets from this workflow.
+Use CODEOWNERS / required review on `.github/workflows` and keep the plan role read-only.
 
 Deletes/replacements **fail the PR check and refuse apply**, reporting **destructive: needs
 manual apply** with addresses/actions in the summary and upserted `<!-- starter-infra-plan -->`
@@ -129,13 +132,14 @@ therefore means legitimate destructive PRs need an owner bypass to merge.
 
 Main plans fresh against current state: PR plans are advisory. Reports include SHA-256 of
 sorted `address:actions` lines for comparison (not an attribute-value attestation). The guard
-and applying that job's exact saved `tfplan` enforce safety. Only plan takes
-`-exclude=github_actions_secret.swa_deploy_token`; saved-plan apply needs no exclusion or GitHub
-provider token. **SWA replacement refreshes `AZURE_STATIC_WEB_APPS_API_TOKEN` only via manual
-apply without exclusion.** Public logs capture plan output to a runner file, showing only the
-last 40 diagnostic lines on failure; comments/summaries expose only addresses/actions. No plan
-artifacts are uploaded. `if: always()` deletes plans, JSON, logs and `.terraform`; diagnostic
-tails can still contain sensitive error details.
+and applying that job's exact saved `tfplan` enforce safety. Both the plan and apply jobs plan with
+`-exclude=github_actions_secret.swa_deploy_token` because neither has a GitHub provider token;
+apply then uses that saved plan. **When the SWA is replaced, `AZURE_STATIC_WEB_APPS_API_TOKEN`
+refreshes only via a manual apply without exclusion.** Plan output is captured to a runner file;
+PR failures print only a generic message and step name, while main failures show the last 40
+diagnostic lines with GUIDs redacted. Comments/summaries expose only addresses/actions. No plan
+artifacts are uploaded. `if: always()` deletes plans, JSON, logs and `.terraform`; redacted
+tails can still contain other sensitive error details.
 
 Run these blocks in order in one Bash terminal with az and gh already logged in as the owner,
 from the authoritative checkout. These owner commands have not been executed by the implementation
@@ -165,7 +169,6 @@ fi
 source "$HOME/.starter-infra-ci.env"
 test "$FRG" = rg-swastarter-dev
 SRG="$FRG"
-printf 'SRG=%s\n' "$SRG" >> "$HOME/.starter-infra-ci.env"
 az account set --subscription "$SUB"
 az group show -n "$SRG" --query id -o tsv >/dev/null
 az storage account create -n "$SA" -g "$SRG" -l "$LOC" --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false --https-only true -o none
@@ -174,7 +177,7 @@ az storage container-rm create --storage-account "$SA" -g "$SRG" -n tfstate -o n
 STATE_ID=$(az storage account show -n "$SA" -g "$SRG" --query id -o tsv)
 OWNER_ID=$(az ad signed-in-user show --query id -o tsv)
 az role assignment create --assignee-object-id "$OWNER_ID" --assignee-principal-type User --role 'Storage Blob Data Owner' --scope "$STATE_ID" -o none
-az lock create -n starter-tfstate-nodelete --lock-type CanNotDelete -g "$SRG" --resource-name "$SA" --resource-type Microsoft.Storage/storageAccounts -o none
+az lock show -n starter-tfstate-nodelete -g "$SRG" --resource-name "$SA" --resource-type Microsoft.Storage/storageAccounts -o none 2>/dev/null || az lock create -n starter-tfstate-nodelete --lock-type CanNotDelete -g "$SRG" --resource-name "$SA" --resource-type Microsoft.Storage/storageAccounts -o none
 ```
 
 The backend uses native blob lease locking over Azure AD auth; no shared key is required.
@@ -186,12 +189,16 @@ Wait for RBAC propagation before migration; rerun a failed operation only after 
 source "$HOME/.starter-infra-ci.env"
 az identity create -g "$SRG" -n id-starter-infra-plan -o none
 az identity create -g "$SRG" -n id-starter-infra-apply -o none
-az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-plan -n github-pr --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:pull_request' --audiences api://AzureADTokenExchange -o none
-az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-apply -n github-main --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:ref:refs/heads/main' --audiences api://AzureADTokenExchange -o none
-printf 'PLAN_ID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-plan --query clientId -o tsv)" >> "$HOME/.starter-infra-ci.env"
-printf 'PLAN_PID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-plan --query principalId -o tsv)" >> "$HOME/.starter-infra-ci.env"
-printf 'APPLY_ID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-apply --query clientId -o tsv)" >> "$HOME/.starter-infra-ci.env"
-printf 'APPLY_PID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-apply --query principalId -o tsv)" >> "$HOME/.starter-infra-ci.env"
+az identity federated-credential show -g "$SRG" --identity-name id-starter-infra-plan -n github-pr -o none 2>/dev/null || az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-plan -n github-pr --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:pull_request' --audiences api://AzureADTokenExchange -o none
+az identity federated-credential show -g "$SRG" --identity-name id-starter-infra-apply -n github-main -o none 2>/dev/null || az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-apply -n github-main --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:ref:refs/heads/main' --audiences api://AzureADTokenExchange -o none
+PLAN_ID=$(az identity show -g "$SRG" -n id-starter-infra-plan --query clientId -o tsv)
+PLAN_PID=$(az identity show -g "$SRG" -n id-starter-infra-plan --query principalId -o tsv)
+APPLY_ID=$(az identity show -g "$SRG" -n id-starter-infra-apply --query clientId -o tsv)
+APPLY_PID=$(az identity show -g "$SRG" -n id-starter-infra-apply --query principalId -o tsv)
+umask 077
+for variable in SUB TENANT FRG SRG SA LOC REPO PLAN_ID PLAN_PID APPLY_ID APPLY_PID; do
+  printf '%s=%q\n' "$variable" "${!variable}"
+done > "$HOME/.starter-infra-ci.env"
 ```
 
 No GitHub Environment is required: the apply credential's exact subject trusts main only.
@@ -249,14 +256,15 @@ stack never manages the state account, and its CanNotDelete lock makes a group d
 **5. needs owner login — back up, migrate authoritative state and verify no changes**
 
 Finish PR #18's manual apply with your own Azure/GitHub login before continuing.
-Adjust STATE_DIR below to the directory containing the authoritative existing local state and updated configuration.
+Before step 5, set `STATE_DIR` in this terminal to the absolute directory containing the
+authoritative existing local state and updated configuration.
 Do not migrate a new checkout's empty state. Backups contain secrets: keep them private, never commit or upload them.
 Run in the same Bash terminal as step 6. When prompted, enter the JSON list matching your real allowed_origins;
 leave blank only if the existing state uses the module default. This becomes STARTER_INFRA_ALLOWED_ORIGINS.
 
 ```bash
 source "$HOME/.starter-infra-ci.env"
-STATE_DIR="$HOME/Code/blazor-swa-starter/infrastructure/terraform"
+: "${STATE_DIR:?set STATE_DIR to the authoritative Terraform state directory}"
 cd "$STATE_DIR"
 test -s terraform.tfstate
 unset STARTER_ZERO_DIFF_VERIFIED
@@ -315,6 +323,7 @@ manual recovery after reviewing the destructive changes; do not run it as part o
 
 ```bash
 source "$HOME/.starter-infra-ci.env"
+: "${STATE_DIR:?set STATE_DIR to the authoritative Terraform state directory}"
 cd "$STATE_DIR"
 GITHUB_TOKEN=$(gh auth token --user quaz579) tofu apply
 ```

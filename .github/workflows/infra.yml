@@ -123,14 +123,14 @@ jobs:
           status=$?
           set -e
           if [[ "$status" != 0 && "$status" != 2 ]]; then
-            echo "::error::OpenTofu plan failed; last 40 diagnostic lines follow"
-            tail -n 40 plan.log
+            echo "::error::Plan infrastructure: OpenTofu plan failed"
             exit "$status"
           fi
           tofu show -json tfplan > plan.json 2> show.log
 
       - name: Summarize addresses and guard destructive changes
         run: |
+          jq -e -s 'length == 1 and (.[0] | type == "object" and (.format_version | type == "string" and length > 0) and (.resource_changes // [] | type == "array"))' plan.json > /dev/null
           jq -r '.resource_changes[]? | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > actions.txt
           jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > destructive.txt
           fingerprint=$(sha256sum actions.txt | cut -d ' ' -f 1)
@@ -232,13 +232,16 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
-      - name: Assert main checkout
+      - name: Require current main tip
         env:
           EXPECTED_SHA: ${{ github.sha }}
-          EXPECTED_REF: ${{ github.ref }}
         run: |
-          test "$EXPECTED_REF" = refs/heads/main
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          set -euo pipefail
+          main_tip=$(git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY.git" refs/heads/main | cut -f 1)
+          if [[ "$main_tip" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Stale run: main has advanced; do not apply. Run infrastructure CI for the current main tip."
+            exit 1
+          fi
 
       - name: Require repository variables
         run: |
@@ -309,14 +312,15 @@ jobs:
           status=$?
           set -e
           if [[ "$status" != 0 && "$status" != 2 ]]; then
-            echo "::error::OpenTofu plan failed; last 40 diagnostic lines follow"
-            tail -n 40 plan.log
+            echo "::error::Plan infrastructure: OpenTofu plan failed; last 40 redacted diagnostic lines follow"
+            tail -n 40 plan.log | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/[REDACTED-GUID]/g'
             exit "$status"
           fi
           tofu show -json tfplan > plan.json 2> show.log
 
       - name: Summarize addresses and guard destructive changes
         run: |
+          jq -e -s 'length == 1 and (.[0] | type == "object" and (.format_version | type == "string" and length > 0) and (.resource_changes // [] | type == "array"))' plan.json > /dev/null
           jq -r '.resource_changes[]? | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > actions.txt
           jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "\(.address):\(.change.actions | sort | join(","))"' plan.json | LC_ALL=C sort > destructive.txt
           fingerprint=$(sha256sum actions.txt | cut -d ' ' -f 1)
@@ -348,8 +352,8 @@ jobs:
       - name: Apply saved plan
         run: |
           if ! tofu apply -input=false -no-color tfplan > apply.log 2>&1; then
-            echo "::error::OpenTofu apply failed; last 40 diagnostic lines follow"
-            tail -n 40 apply.log
+            echo "::error::OpenTofu apply failed; last 40 redacted diagnostic lines follow"
+            tail -n 40 apply.log | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/[REDACTED-GUID]/g'
             exit 1
           fi
           echo 'Saved plan applied successfully.' >> "$GITHUB_STEP_SUMMARY"

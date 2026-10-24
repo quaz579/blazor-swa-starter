@@ -52,7 +52,6 @@ wwwroot/service-worker-assets.js
 *.tfstate.*
 *.tfstate.backup
 .terraform/
-.terraform.lock.hcl
 terraform-outputs.json
 crash.log
 crash.*.log
