@@ -37,7 +37,7 @@ detaches on success. `stop-local.sh` kills only the PIDs `start-local.sh` record
 one's forked child that ends up holding the actual listening socket), never a blanket
 process-name kill. Logs land in `.azurite/logs/*-local.log`.
 
-For the E2E variant (same stack, `ASPNETCORE_ENVIRONMENT=E2E` so the Blazor app loads
+For the E2E variant (same stack, `WasmApplicationEnvironmentName=E2E` so the Blazor app loads
 `wwwroot/appsettings.E2E.json` instead of `appsettings.Development.json`), use
 `./scripts/start-e2e.sh` / `./scripts/stop-e2e.sh` — see [`TESTING.md`](TESTING.md) for running
 tests against it.

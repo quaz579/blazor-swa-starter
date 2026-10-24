@@ -61,6 +61,6 @@ time of writing — advance both numbers together whenever you bump, don't assum
 still matches:
 
 ```
-grep -rn "net8\.0\|8\.0\.x\|dotnet-isolated:8" --include=*.sh --include=*.yml --include=*.json \
+grep -rn "net9\.0\|9\.0\.x\|dotnet-isolated:9" --include=*.sh --include=*.yml --include=*.json \
   --include=*.md --include=*.tf --include=*.csproj . | grep -v -e node_modules -e /obj/ -e /bin/
 ```

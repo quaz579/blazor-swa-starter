@@ -95,9 +95,8 @@ fi
 if [ -n "$(listener_pid "$WEB_PORT")" ]; then
   echo "Blazor dev server already running on port $WEB_PORT, leaving it alone"
 else
-  # ASPNETCORE_ENVIRONMENT=E2E makes the WASM host load appsettings.E2E.json
-  # instead of appsettings.Development.json.
-  (cd "$REPO_ROOT/src/App.Web" && ASPNETCORE_ENVIRONMENT=E2E exec dotnet run --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-e2e.log" 2>&1 &
+  # Standalone WASM selects appsettings.E2E.json through its build property.
+  (cd "$REPO_ROOT/src/App.Web" && exec dotnet run -p:WasmApplicationEnvironmentName=E2E --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-e2e.log" 2>&1 &
   web_pid=$!
   record_pid "web" "$web_pid" "$WEB_PORT"
   wait_for "Blazor dev server" 60 "$LOG_DIR/web-e2e.log" http_ok "http://localhost:$WEB_PORT/"
