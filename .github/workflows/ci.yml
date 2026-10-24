@@ -109,6 +109,8 @@ jobs:
         run: scripts/generate-agent-views.sh --check
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
@@ -160,6 +162,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
@@ -240,6 +244,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
         with:
           global-json-file: global.json
 
