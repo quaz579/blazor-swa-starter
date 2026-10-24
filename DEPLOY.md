@@ -107,7 +107,8 @@ that exercise `POST`/`DELETE` authenticate first — see `TESTING.md`.
 `.github/workflows/infra.yml` (`Infra`) plans same-repo PRs targeting `main` and applies pushes
 to `main`, path-filtered to `infrastructure/terraform/**` and the workflow. Every job requires
 `github.repository == 'quaz579/blazor-swa-starter'` and `STARTER_INFRA_CI=true`, keeping template
-copies inert. Missing required variables fail explicitly after gating. Fork/Dependabot PRs
+copies inert. Missing required variables fail explicitly after gating. `STARTER_INFRA_STATE_RG` defaults to
+`rg-swastarter-dev`; both jobs reject any other value. Fork/Dependabot PRs
 are skipped; the trigger is `pull_request`, never `pull_request_target` or `workflow_run`.
 Each job grants `contents: read` and `id-token: write`; only plan grants `pull-requests: write`.
 Actions are SHA-pinned, jobs have timeouts, plans cancel per PR, and applies serialize without
@@ -136,37 +137,229 @@ last 40 diagnostic lines on failure; comments/summaries expose only addresses/ac
 artifacts are uploaded. `if: always()` deletes plans, JSON, logs and `.terraform`; diagnostic
 tails can still contain sensitive error details.
 
-One-time owner procedure (matching copy-paste command blocks are in the implementation
-handoff's `owner-steps.txt`; use the owner's Azure/GitHub login):
+Run these blocks in order in one Bash terminal with az and gh already logged in as the owner,
+from the authoritative checkout. These owner commands have not been executed by the implementation
+agent: Azure/GitHub writes and state migration require the owner's login and real state.
+`~/.starter-infra-ci.env` contains names and IDs only. Complete PR #18's manual apply before step 1;
+the app RG must already exist and resource providers must already be registered. Keep CI disabled
+until step 6. Do not use the generic `infrastructure/terraform/bootstrap` module for this procedure:
+this state account is created outside Terraform and must never be imported into either stack.
 
-1. Create `rg-swastarter-tfstate`, a unique Standard_LRS account (TLS 1.2, HTTPS only, public
-   blobs/shared keys disabled), versioning, 30-day blob/container soft delete, `tfstate` container,
-   RG CanNotDelete lock, and owner `Storage Blob Data Owner` on the account.
-2. Create `id-starter-infra-plan` and `id-starter-infra-apply` there. Federate GitHub's issuer and
-   `api://AzureADTokenExchange` audience to `repo:quaz579/blazor-swa-starter:pull_request` and
-   `repo:quaz579/blazor-swa-starter:ref:refs/heads/main`, respectively.
-3. Grant plan RG `Reader`, custom `Starter Infra Plan Secret Reader` (storage listKeys,
-   SWA listSecrets/listAppSettings, workspace sharedKeys), and state-container `Storage Blob
-   Data Reader`. RG-only Reader and precise provider list calls are UNVERIFIED; diagnose before
-   subscription Reader fallback. Application Insights GET should suffice (UNVERIFIED).
-4. Grant apply `Contributor` only on the **already existing** `rg-swastarter-dev`, plus state-container
-   `Storage Blob Data Contributor`; no subscription role or role-assignment rights.
-5. **PR #18 manual apply first**, then back up authoritative state privately and create local
-   gitignored `backend_override.tf` with `terraform { backend "azurerm" { use_azuread_auth = true
-   use_oidc = true } }` (format as multiline HCL). Run `tofu init -migrate-state -force-copy`
-   with backend configs `resource_group_name`, `storage_account_name`, `container_name=tfstate`,
-   `key=blazor-swa-starter.tfstate`, and `use_oidc=false` for owner CLI login. With CI-equivalent
-   inputs and no tfvars overrides, `tofu plan -exclude=github_actions_secret.swa_deploy_token`
-   must show **no changes** before enabling.
-6. Set `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `STARTER_INFRA_PLAN_CLIENT_ID`,
-   `STARTER_INFRA_APPLY_CLIENT_ID`, `STARTER_INFRA_STATE_RG`, `STARTER_INFRA_STATE_ACCOUNT`,
-   `STARTER_INFRA_STATE_CONTAINER=tfstate`, `STARTER_INFRA_STATE_KEY=blazor-swa-starter.tfstate`,
-   `STARTER_INFRA_PROJECT_NAME=swastarter`, `STARTER_INFRA_ENVIRONMENT=dev`,
-   `STARTER_INFRA_LOCATION=eastus2`. Owner/repo derive from GitHub context. Optional
-   `STARTER_INFRA_ALLOWED_ORIGINS` is a JSON list mapped to `TF_VAR_allowed_origins` only when
-   nonempty; match deployed-SWA CORS additions. Set **`STARTER_INFRA_CI=true` last**. No secrets.
-7. Optionally require stable `Infra plan` through branch protection; path-filtered runs can
-   leave unrelated PRs waiting, and destructive PRs need the bypass above.
+**1. needs owner login — state account and protection**
+
+```bash
+set -euo pipefail
+if [ ! -f "$HOME/.starter-infra-ci.env" ]; then
+  umask 077
+  suffix=$(openssl rand -hex 3)
+  cat > "$HOME/.starter-infra-ci.env" <<EOF
+SUB=$(az account show --query id -o tsv)
+TENANT=$(az account show --query tenantId -o tsv)
+FRG=rg-swastarter-dev
+SRG=rg-swastarter-dev
+SA=ststartertfstate${suffix}
+LOC=eastus2
+REPO=quaz579/blazor-swa-starter
+EOF
+fi
+source "$HOME/.starter-infra-ci.env"
+test "$FRG" = rg-swastarter-dev
+SRG="$FRG"
+printf 'SRG=%s\n' "$SRG" >> "$HOME/.starter-infra-ci.env"
+az account set --subscription "$SUB"
+az group show -n "$SRG" --query id -o tsv >/dev/null
+az storage account create -n "$SA" -g "$SRG" -l "$LOC" --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false --allow-shared-key-access false --https-only true -o none
+az storage account blob-service-properties update -n "$SA" -g "$SRG" --enable-versioning true --enable-delete-retention true --delete-retention-days 30 --enable-container-delete-retention true --container-delete-retention-days 30 -o none
+az storage container-rm create --storage-account "$SA" -g "$SRG" -n tfstate -o none
+STATE_ID=$(az storage account show -n "$SA" -g "$SRG" --query id -o tsv)
+OWNER_ID=$(az ad signed-in-user show --query id -o tsv)
+az role assignment create --assignee-object-id "$OWNER_ID" --assignee-principal-type User --role 'Storage Blob Data Owner' --scope "$STATE_ID" -o none
+az lock create -n starter-tfstate-nodelete --lock-type CanNotDelete -g "$SRG" --resource-name "$SA" --resource-type Microsoft.Storage/storageAccounts -o none
+```
+
+The backend uses native blob lease locking over Azure AD auth; no shared key is required.
+Wait for RBAC propagation before migration; rerun a failed operation only after checking its result.
+
+**2. needs owner login — two managed identities and federated credentials**
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+az identity create -g "$SRG" -n id-starter-infra-plan -o none
+az identity create -g "$SRG" -n id-starter-infra-apply -o none
+az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-plan -n github-pr --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:pull_request' --audiences api://AzureADTokenExchange -o none
+az identity federated-credential create -g "$SRG" --identity-name id-starter-infra-apply -n github-main --issuer https://token.actions.githubusercontent.com --subject 'repo:quaz579/blazor-swa-starter:ref:refs/heads/main' --audiences api://AzureADTokenExchange -o none
+printf 'PLAN_ID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-plan --query clientId -o tsv)" >> "$HOME/.starter-infra-ci.env"
+printf 'PLAN_PID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-plan --query principalId -o tsv)" >> "$HOME/.starter-infra-ci.env"
+printf 'APPLY_ID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-apply --query clientId -o tsv)" >> "$HOME/.starter-infra-ci.env"
+printf 'APPLY_PID=%s\n' "$(az identity show -g "$SRG" -n id-starter-infra-apply --query principalId -o tsv)" >> "$HOME/.starter-infra-ci.env"
+```
+
+No GitHub Environment is required: the apply credential's exact subject trusts main only.
+Anyone with repository write access can execute code with the plan identity through a same-repo PR.
+That identity can read keys; keep collaborators trusted and protect main. Fork PRs receive no CI OIDC token or secrets.
+
+**3. needs owner login — plan RBAC**
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+FRG_ID="/subscriptions/$SUB/resourceGroups/$FRG"
+STATE_C="$(az storage account show -n "$SA" -g "$SRG" --query id -o tsv)/blobServices/default/containers/tfstate"
+role_file=$(mktemp)
+cat > "$role_file" <<EOF
+{"Name":"Starter Infra Plan Secret Reader","IsCustom":true,"Description":"Read secret values required by azurerm refresh in the starter RG.","Actions":["Microsoft.Storage/storageAccounts/listKeys/action","Microsoft.Web/staticSites/listSecrets/action","Microsoft.Web/staticSites/listAppSettings/action","Microsoft.OperationalInsights/workspaces/sharedKeys/action"],"NotActions":[],"AssignableScopes":["$FRG_ID"]}
+EOF
+if [ "$(az role definition list --name 'Starter Infra Plan Secret Reader' --query 'length(@)' -o tsv)" = 0 ]; then
+  az role definition create --role-definition "@$role_file" -o none
+else
+  az role definition update --role-definition "@$role_file" -o none
+fi
+rm -f "$role_file"
+az role assignment create --assignee-object-id "$PLAN_PID" --assignee-principal-type ServicePrincipal --role Reader --scope "$FRG_ID" -o none
+az role assignment create --assignee-object-id "$PLAN_PID" --assignee-principal-type ServicePrincipal --role 'Starter Infra Plan Secret Reader' --scope "$FRG_ID" -o none
+az role assignment create --assignee-object-id "$PLAN_PID" --assignee-principal-type ServicePrincipal --role 'Storage Blob Data Reader' --scope "$STATE_C" -o none
+```
+
+Validate the RG-scoped role against the installed provider during the first real plan. If refresh
+fails, diagnose the denied operation and add only its specific missing read action to this custom
+role at RG scope, never subscription scope. Keep all assignments within `rg-swastarter-dev`.
+
+UNVERIFIED: azurerm_static_web_app refresh is expected to call listAppSettings as well as listSecrets;
+both actions are included. Application Insights component GET is expected to return its instrumentation
+key and connection string, so no additional list action is included. These refresh permissions still
+need verification in the first authenticated plan.
+
+**4. needs owner login — apply RBAC**
+
+The app RG must already exist: it was created by the owner's manual apply, not by CI bootstrap.
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+az group show -n "$FRG" --query id -o tsv >/dev/null
+FRG_ID="/subscriptions/$SUB/resourceGroups/$FRG"
+STATE_C="$(az storage account show -n "$SA" -g "$SRG" --query id -o tsv)/blobServices/default/containers/tfstate"
+az role assignment create --assignee-object-id "$APPLY_PID" --assignee-principal-type ServicePrincipal --role Contributor --scope "$FRG_ID" -o none
+az role assignment create --assignee-object-id "$APPLY_PID" --assignee-principal-type ServicePrincipal --role 'Storage Blob Data Contributor' --scope "$STATE_C" -o none
+```
+
+Apply has no role-assignment rights (no Owner or User Access Administrator). Contributor on
+rg-swastarter-dev also permits changes to the state account; the owner accepts this. Blob lease
+locking, versioning, soft delete and the account CanNotDelete lock mitigate that access. The root
+stack never manages the state account, and its CanNotDelete lock makes a group delete fail.
+
+**5. needs owner login — back up, migrate authoritative state and verify no changes**
+
+Finish PR #18's manual apply with your own Azure/GitHub login before continuing.
+Adjust STATE_DIR below to the directory containing the authoritative existing local state and updated configuration.
+Do not migrate a new checkout's empty state. Backups contain secrets: keep them private, never commit or upload them.
+Run in the same Bash terminal as step 6. When prompted, enter the JSON list matching your real allowed_origins;
+leave blank only if the existing state uses the module default. This becomes STARTER_INFRA_ALLOWED_ORIGINS.
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+STATE_DIR="$HOME/Code/blazor-swa-starter/infrastructure/terraform"
+cd "$STATE_DIR"
+test -s terraform.tfstate
+unset STARTER_ZERO_DIFF_VERIFIED
+for variable in "${!TF_VAR_@}"; do unset "$variable"; done
+export ARM_SUBSCRIPTION_ID="$SUB" ARM_TENANT_ID="$TENANT" ARM_USE_OIDC=false ARM_USE_AZUREAD=true ARM_RESOURCE_PROVIDER_REGISTRATIONS=none
+unset ARM_CLIENT_ID GITHUB_TOKEN GH_TOKEN TF_CLI_ARGS TF_CLI_ARGS_plan
+export TF_VAR_project_name=swastarter TF_VAR_environment=dev TF_VAR_location=eastus2 TF_VAR_github_owner=quaz579 TF_VAR_github_repository=blazor-swa-starter
+printf 'allowed_origins JSON (blank for module default): '
+IFS= read -r ALLOWED_ORIGINS
+unset TF_VAR_allowed_origins
+if [ -n "$ALLOWED_ORIGINS" ]; then
+  ALLOWED_ORIGINS=$(printf '%s' "$ALLOWED_ORIGINS" | jq -ce 'if type == "array" and all(.[]; type == "string") then . else error("expected JSON list of strings") end')
+  export TF_VAR_allowed_origins="$ALLOWED_ORIGINS"
+fi
+umask 077
+backup=$(mktemp -d "$HOME/starter-state-backup.$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")
+cp terraform.tfstate "$backup/terraform.tfstate"
+if [ -f terraform.tfstate.backup ]; then cp terraform.tfstate.backup "$backup/"; fi
+cat > backend_override.tf <<'BACKEND'
+terraform {
+  backend "azurerm" {
+    use_azuread_auth = true
+    use_oidc         = true
+  }
+}
+BACKEND
+tofu init -migrate-state -force-copy -backend-config="resource_group_name=$SRG" -backend-config="storage_account_name=$SA" -backend-config=container_name=tfstate -backend-config=key=blazor-swa-starter.tfstate -backend-config=use_oidc=false
+(
+  set -euo pipefail
+  shopt -s nullglob
+  tfvars=( *.tfvars *.tfvars.json )
+  for f in "${tfvars[@]}"; do cp "$f" "$backup/"; done
+  restore() { for f in "${tfvars[@]}"; do cp "$backup/$f" "$f"; done; }
+  trap restore EXIT
+  for f in "${tfvars[@]}"; do rm "$f"; done
+  set +e
+  tofu plan -input=false -no-color -detailed-exitcode -exclude=github_actions_secret.swa_deploy_token
+  status=$?
+  set -e
+  if [ "$status" -ne 0 ]; then
+    printf 'STOP: pre-enable plan must show No changes (exit 0); got %s. Reconcile CI variables with authoritative settings first.\n' "$status" >&2
+    exit 1
+  fi
+)
+export STARTER_ZERO_DIFF_VERIFIED=true
+```
+
+Expect "No changes" and exit 0 before continuing.
+The migration temporarily overrides use_oidc=false for the owner's Azure CLI login; CI uses OIDC=true.
+The zero-diff check temporarily removes all tfvars and restores them on exit, so it checks CI's actual inputs.
+Run this plan privately: it can show sensitive diagnostics. Keep local backups even after migration.
+If the SWA is replaced, CI never refreshes AZURE_STATIC_WEB_APPS_API_TOKEN. Use the following
+manual recovery after reviewing the destructive changes; do not run it as part of bootstrap.
+
+**5a. needs owner login — OPTIONAL destructive manual apply / SWA secret refresh**
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+cd "$STATE_DIR"
+GITHUB_TOKEN=$(gh auth token --user quaz579) tofu apply
+```
+
+No -exclude is used for manual recovery: the GitHub provider refreshes the deploy-token secret.
+The state account's CanNotDelete lock still makes a resource-group delete fail.
+After recovery, repeat step 5's zero-diff check before enabling or resuming CI.
+
+**6. needs owner login — repository variables, on-switch LAST**
+
+Only continue after step 5 succeeds. No secrets are created. Every gh command selects quaz579 explicitly.
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+test "${STARTER_ZERO_DIFF_VERIFIED:-}" = true
+for kv in \
+  "AZURE_TENANT_ID=$TENANT" \
+  "AZURE_SUBSCRIPTION_ID=$SUB" \
+  "STARTER_INFRA_PLAN_CLIENT_ID=$PLAN_ID" \
+  "STARTER_INFRA_APPLY_CLIENT_ID=$APPLY_ID" \
+  "STARTER_INFRA_STATE_RG=$SRG" \
+  "STARTER_INFRA_STATE_ACCOUNT=$SA" \
+  'STARTER_INFRA_STATE_CONTAINER=tfstate' \
+  'STARTER_INFRA_STATE_KEY=blazor-swa-starter.tfstate' \
+  'STARTER_INFRA_PROJECT_NAME=swastarter' \
+  'STARTER_INFRA_ENVIRONMENT=dev' \
+  'STARTER_INFRA_LOCATION=eastus2'; do
+  GH_TOKEN=$(gh auth token --user quaz579) gh variable set "${kv%%=*}" -R quaz579/blazor-swa-starter --body "${kv#*=}"
+done
+GH_TOKEN=$(gh auth token --user quaz579) gh variable set STARTER_INFRA_ALLOWED_ORIGINS -R quaz579/blazor-swa-starter --body "${ALLOWED_ORIGINS:-}"
+GH_TOKEN=$(gh auth token --user quaz579) gh variable set STARTER_INFRA_CI -R quaz579/blazor-swa-starter --body true
+```
+
+**7. needs owner login — OPTIONAL branch protection requiring stable check name Infra plan**
+
+The job name is stable: Infra plan. Path-filtered workflows do not report a check on unrelated PRs:
+requiring it globally can leave them waiting. Fork/Dependabot PRs are skipped. A destructive PR fails
+Infra plan and needs an owner bypass to merge if required. Prefer a path-aware ruleset/check policy.
+The following adds the context to EXISTING branch protection without replacing its other rules.
+If main has no protection yet, configure a path-aware ruleset in GitHub instead.
+
+```bash
+source "$HOME/.starter-infra-ci.env"
+printf '{"contexts":["Infra plan"]}\n' | GH_TOKEN=$(gh auth token --user quaz579) gh api --method POST -H 'Accept: application/vnd.github+json' repos/quaz579/blazor-swa-starter/branches/main/protection/required_status_checks/contexts --input - >/dev/null
+```
 
 ## Teardown
 
@@ -175,7 +368,11 @@ cd infrastructure/terraform
 terraform destroy
 ```
 
-Designed to be repeatable: `terraform apply` afterward re-provisions everything (a random
+The resource group also holds the external CI state account and managed identities, and the account's
+CanNotDelete lock makes a full destroy fail. For deliberate decommissioning, first back up/migrate state
+out and preserve or relocate those external resources. Routine CI never removes the lock.
+
+After deliberate teardown, `terraform apply` re-provisions app resources (a random
 6-character suffix keeps the storage account and Log Analytics workspace names unique across a
 destroy/apply cycle), and re-runs `github.tf` to rewrite the deploy-token secret.
 

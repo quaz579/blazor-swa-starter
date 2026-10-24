@@ -44,7 +44,7 @@ jobs:
       TF_VAR_location: ${{ vars.STARTER_INFRA_LOCATION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_github_repository: ${{ github.event.repository.name }}
-      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG }}
+      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG || 'rg-swastarter-dev' }}
       STATE_ACCOUNT: ${{ vars.STARTER_INFRA_STATE_ACCOUNT }}
       STATE_CONTAINER: ${{ vars.STARTER_INFRA_STATE_CONTAINER }}
       STATE_KEY: ${{ vars.STARTER_INFRA_STATE_KEY }}
@@ -75,6 +75,10 @@ jobs:
           STATE_CONTAINER STARTER_INFRA_STATE_CONTAINER
           STATE_KEY STARTER_INFRA_STATE_KEY
           VARIABLES
+          if [[ "$STATE_RG" != rg-swastarter-dev ]]; then
+            echo "::error::STARTER_INFRA_STATE_RG must be rg-swastarter-dev"
+            missing=1
+          fi
           exit "$missing"
 
       - name: Set optional allowed origins
@@ -218,7 +222,7 @@ jobs:
       TF_VAR_location: ${{ vars.STARTER_INFRA_LOCATION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_github_repository: ${{ github.event.repository.name }}
-      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG }}
+      STATE_RG: ${{ vars.STARTER_INFRA_STATE_RG || 'rg-swastarter-dev' }}
       STATE_ACCOUNT: ${{ vars.STARTER_INFRA_STATE_ACCOUNT }}
       STATE_CONTAINER: ${{ vars.STARTER_INFRA_STATE_CONTAINER }}
       STATE_KEY: ${{ vars.STARTER_INFRA_STATE_KEY }}
@@ -257,6 +261,10 @@ jobs:
           STATE_CONTAINER STARTER_INFRA_STATE_CONTAINER
           STATE_KEY STARTER_INFRA_STATE_KEY
           VARIABLES
+          if [[ "$STATE_RG" != rg-swastarter-dev ]]; then
+            echo "::error::STARTER_INFRA_STATE_RG must be rg-swastarter-dev"
+            missing=1
+          fi
           exit "$missing"
 
       - name: Set optional allowed origins
