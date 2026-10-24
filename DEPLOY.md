@@ -135,6 +135,9 @@ same-repo head and OWNER, MEMBER or COLLABORATOR author association; fork/untrus
 stay hosted and never run the status selector. CI and preview cleanup retain their original
 job IDs and test/deploy prerequisites.
 
+Provision org apps with `RUNNER_FALLBACK_ENABLED=true`: prefer the nuc and select hosted
+when it is busy or offline. The public starter and software-factory CI defaults are unchanged.
+
 With `RUNNER_MODE=hosted`, all jobs go directly to hosted without selection. Otherwise,
 `RUNNER_FALLBACK_ENABLED=true` enables checkout-free `ubuntu-slim` selection at each job
 boundary using the repository secret `RUNNER_STATUS_TOKEN`. It checks paginated org inventory
@@ -157,3 +160,10 @@ factory/personal credentials and runner enrollment credentials never belong in a
 Keep the profile disabled until the isolated unprivileged app runner, single-slot capacity,
 rootless Docker Azure deployment and live fallback proofs pass. The profile does not enable
 or alter the factory's separate Azure per-product runner feature.
+
+Org workflow defaults are read-only under enterprise policy and cannot be changed. Every
+app workflow job declares explicit least-privilege token permissions: selectors use `{}`,
+checkout jobs use `contents: read`, and SWA upload jobs add `pull-requests: write` for preview
+comments. No job uses OIDC. `cd tests && npm run check:workflows` rejects missing permissions,
+including in Copilot setup and preview cleanup; `npm test` runs this check first. A real PR
+preview deploy under the read-only default remains required in canary `sf-7tl.5`.
