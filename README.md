@@ -12,7 +12,7 @@ opening the API up for your own use.
 ## Run it locally
 
 Prerequisites: the .NET SDK `global.json` pins, Node 22.x, [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local) v4,
-the [SWA CLI](https://azure.github.io/static-web-apps-cli/) (`npm i -g @azure/static-web-apps-cli`), and Azurite >= 3.37.0.
+the [SWA CLI](https://azure.github.io/static-web-apps-cli/) (`npm i -g @azure/static-web-apps-cli@2.1.0`), and Azurite >= 3.37.0.
 
 ```sh
 ./scripts/start-local.sh          # Azurite + Functions host + Blazor dev server + SWA CLI proxy
