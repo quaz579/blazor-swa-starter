@@ -25,8 +25,8 @@ they're adjacent to a flow you're validating.
   which methods actually call a write/put/upload operation before deciding a flow is safe to
   exercise against a deployed slot — do not assume from the endpoint name.
 - **`start-e2e.sh` does not mutate any checked-in config file.** It launches the Blazor dev server
-  with `ASPNETCORE_ENVIRONMENT=E2E`, which makes the WASM host load `wwwroot/appsettings.E2E.json`
-  instead of `wwwroot/appsettings.Development.json` — the swap is an environment variable, not a
+  with `-p:WasmApplicationEnvironmentName=E2E`, which makes the WASM host load `wwwroot/appsettings.E2E.json`
+  instead of `wwwroot/appsettings.Development.json` — the selection is an MSBuild property, not a
   file edit. Always pair a `start-e2e.sh` with a `stop-e2e.sh`, including on failure — do not leave
   the environment running.
 - If browser automation is not available in this session, do not skip the browser-proof step —

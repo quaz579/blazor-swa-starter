@@ -338,7 +338,7 @@ jobs:
           app_location: src/App.Web
           api_location: src/App.Api
           output_location: wwwroot
-          # Oryx builds net9.0 server-side for both the frontend and the
+          # Oryx builds net10.0 server-side for both the frontend and the
           # managed-functions API — do not set skip_app_build/skip_api_build.
 
       - name: Check whether the pull request closed during the run

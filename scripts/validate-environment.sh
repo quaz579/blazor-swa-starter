@@ -29,10 +29,10 @@ echo "== Tool versions =="
 
 if [ -f "$REPO_ROOT/global.json" ]; then
   dotnet_version="$(cd "$REPO_ROOT" && dotnet --version 2>/dev/null || true)"
-  if [[ "$dotnet_version" == 9.* ]]; then
+  if [[ "$dotnet_version" == 10.* ]]; then
     ok "dotnet SDK resolves to $dotnet_version via global.json"
   else
-    fail "dotnet --version resolved to '$dotnet_version', expected a 9.x SDK (check global.json / installed SDKs)"
+    fail "dotnet --version resolved to '$dotnet_version', expected a 10.x SDK (check global.json / installed SDKs)"
   fi
 else
   fail "global.json not found at repo root"
@@ -147,6 +147,8 @@ api = urlparse(app["apiDevserverUrl"]).port
 swa = app.get("port")
 
 errors = []
+if app.get("outputLocation") != "src/App.Web/bin/Debug/net10.0/wwwroot":
+    errors.append("outputLocation must be src/App.Web/bin/Debug/net10.0/wwwroot")
 if str(web) != web_port:
     errors.append(f"appDevserverUrl port {web} != WEB_PORT {web_port}")
 if str(api) != api_port:
@@ -159,7 +161,7 @@ if errors:
     sys.exit(1)
 PY
   then
-    ok "swa-cli.config.json ports agree with ports.env"
+    ok "swa-cli.config.json ports agree with ports.env and outputLocation targets net10.0"
   else
     fail "swa-cli.config.json ports drifted from ports.env (see errors above)"
   fi
@@ -172,24 +174,26 @@ elif command -v node >/dev/null 2>&1; then
     const apiPort = new URL(app.apiDevserverUrl).port;
     const swaPort = String(app.port);
     const errors = [];
+    if (app.outputLocation !== 'src/App.Web/bin/Debug/net10.0/wwwroot') errors.push('outputLocation must be src/App.Web/bin/Debug/net10.0/wwwroot');
     if (webPort !== process.argv[2]) errors.push('web port mismatch: ' + webPort + ' != ' + process.argv[2]);
     if (apiPort !== process.argv[3]) errors.push('api port mismatch: ' + apiPort + ' != ' + process.argv[3]);
     if (swaPort !== process.argv[4]) errors.push('swa port mismatch: ' + swaPort + ' != ' + process.argv[4]);
     if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
   " "$config_path" "$WEB_PORT" "$API_PORT" "$SWA_PORT"
   then
-    ok "swa-cli.config.json ports agree with ports.env"
+    ok "swa-cli.config.json ports agree with ports.env and outputLocation targets net10.0"
   else
     fail "swa-cli.config.json ports drifted from ports.env (see errors above)"
   fi
 elif command -v jq >/dev/null 2>&1; then
   web_url="$(jq -r '.configurations.app.appDevserverUrl' "$config_path")"
   api_url="$(jq -r '.configurations.app.apiDevserverUrl' "$config_path")"
+  cfg_output="$(jq -r '.configurations.app.outputLocation' "$config_path")"
   cfg_swa_port="$(jq -r '.configurations.app.port' "$config_path")"
   cfg_web_port="${web_url##*:}"
   cfg_api_port="${api_url##*:}"
-  if [ "$cfg_web_port" = "$WEB_PORT" ] && [ "$cfg_api_port" = "$API_PORT" ] && [ "$cfg_swa_port" = "$SWA_PORT" ]; then
-    ok "swa-cli.config.json ports agree with ports.env"
+  if [ "$cfg_web_port" = "$WEB_PORT" ] && [ "$cfg_api_port" = "$API_PORT" ] && [ "$cfg_swa_port" = "$SWA_PORT" ] && [ "$cfg_output" = "src/App.Web/bin/Debug/net10.0/wwwroot" ]; then
+    ok "swa-cli.config.json ports agree with ports.env and outputLocation targets net10.0"
   else
     fail "swa-cli.config.json ports drifted from ports.env (web=$cfg_web_port api=$cfg_api_port swa=$cfg_swa_port)"
   fi

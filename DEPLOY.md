@@ -119,13 +119,17 @@ re-run casually against a repo that's already live — the read-only checks (`te
 `.claude/agents/swa-infra.md` runs by default, and what to reach for to confirm the
 configuration is still sound without changing anything.
 
-## Why .NET 9, not 10
+## .NET 10 on managed functions
 
-.NET 9 is Standard-Term-Support and reaches end of life 2026-11-10 — the same day as .NET 8. It
-is used here not because it "extends support," but because `dotnet-isolated:9.0` is the ceiling
-Azure Static Web Apps **managed functions** currently accept — there is no `dotnet-isolated:10.0`
-runtime option, so `net9.0` cannot be bumped to `net10.0` without breaking the managed-functions
-deploy.
+Azure Static Web Apps managed functions support `dotnet-isolated:10.0`, selected by
+`src/App.Web/wwwroot/staticwebapp.config.json`. The SDK source of truth is `global.json`:
+keep its floor at `10.0.100` with `rollForward: latestFeature`, and never raise the floor above
+`10.0.200` while that is Oryx's newest available SDK. CI and development can roll forward to
+newer feature bands; Oryx cannot roll backward from a higher floor.
+
+A green preview `deploy` and `smoke-preview`, including `/api/health`, gate managed Functions
+compatibility in this repo's region. Keep Oryx building both projects. Its older SDK can ship
+an older browser runtime than CI tests; prebuilding the frontend is a separate follow-up.
 
 ## Optional private org-app runner profile
 
