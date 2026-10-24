@@ -27,7 +27,29 @@ project_name      = "swastarter"
 github_owner      = "quaz579"
 github_repository = "blazor-swa-starter"
 location          = "eastus2"
+swa_location      = "centralus"
 ```
+
+`location` keeps the resource group, storage, and telemetry in East US 2; `swa_location`
+independently selects Central US for the SWA and its managed Functions API. Changing the
+SWA region replaces the SWA, changes its randomly generated hostname and deployment token,
+and removes its deployments and preview environments. Storage stays in East US 2 and keeps
+its data; the API continues using the same storage connection string across regions.
+
+For the existing starter, Ben applies from the authoritative state directory after reviewing
+`tofu plan -var='swa_location=centralus'` (keep `location=eastus2`):
+
+```sh
+ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv) \
+GITHUB_TOKEN=$(gh auth token --user quaz579) tofu apply -var='swa_location=centralus'
+```
+
+The regional change is **not applied by this PR**. After Ben applies, verify that `github.tf`
+updated `AZURE_STATIC_WEB_APPS_API_TOKEN` to the replacement SWA's token, then retry the PR 2
+deploy. Read `tofu output -raw static_web_app_url` for the new URL, update external consumers
+and any explicit `allowed_origins`, redeploy production, and recreate needed PR previews.
+Restore any settings, custom domains, linked backends, or role invitations added outside IaC
+before relying on them; existing auth sessions and preview URLs cannot carry over.
 
 The Terraform commands in this doc were exercised through OpenTofu (`.terraform.lock.hcl`
 records `registry.opentofu.org` provider sources); `versions.tf` requires Terraform/OpenTofu

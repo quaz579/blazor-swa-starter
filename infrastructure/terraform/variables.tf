@@ -26,13 +26,19 @@ variable "environment" {
 }
 
 variable "location" {
-  description = "Azure region. Must be one of the regions Azure Static Web Apps supports: westus2, centralus, eastus2, westeurope, eastasia."
+  description = "Azure region for the resource group, storage, and telemetry. Independent of the Static Web App region."
   type        = string
   default     = "eastus2"
+}
+
+variable "swa_location" {
+  description = "Azure region for the Static Web App and its managed Functions API."
+  type        = string
+  default     = "centralus"
 
   validation {
-    condition     = contains(["westus2", "centralus", "eastus2", "westeurope", "eastasia"], var.location)
-    error_message = "location must be one of: westus2, centralus, eastus2, westeurope, eastasia (the regions Azure Static Web Apps supports)."
+    condition     = contains(["westus2", "centralus", "eastus2", "westeurope", "eastasia"], var.swa_location)
+    error_message = "swa_location must be one of: westus2, centralus, eastus2, westeurope, eastasia (the regions Azure Static Web Apps supports)."
   }
 }
 
