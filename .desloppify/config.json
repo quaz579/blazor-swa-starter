@@ -72,7 +72,13 @@
     "shellcheck_warning::start-local.sh::shellcheck_warning::10",
     "shellcheck_warning::start-e2e.sh::shellcheck_warning::12",
     "shellcheck_warning::validate-environment.sh::shellcheck_warning::10",
-    "shellcheck_warning::generate-agent-views.sh::shellcheck_warning::135"
+    "shellcheck_warning::generate-agent-views.sh::shellcheck_warning::135",
+    "orphaned::src/App.Tests/Storage/ServiceCollectionExtensionsTests.cs",
+    "test_coverage::src/App.Tests/Storage/ServiceCollectionExtensionsTests.cs",
+    "orphaned::src/App.Tests/PocAuth/PocAuthModelsTests.cs",
+    "test_coverage::src/App.Tests/PocAuth/PocAuthModelsTests.cs",
+    "orphaned::src/App.Tests/PocAuth/PocAuthSettingsTests.cs",
+    "test_coverage::src/App.Tests/PocAuth/PocAuthSettingsTests.cs"
   ],
   "ignore_metadata": {
     "orphaned::src/App.Tests/PocAuth/AuthFunctionTests.cs": {
@@ -477,6 +483,48 @@
     },
     "shellcheck_warning::generate-agent-views.sh::shellcheck_warning::135": {
       "reason": "Independent PR20 audit: xUnit test discovery/helper, mapped test coverage, public fixture, or verified shellcheck lookup/trap false positive."
+    },
+    "orphaned::src/App.Tests/Storage/ServiceCollectionExtensionsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:28+00:00",
+      "fingerprints": [
+        "06a83b1748dd5adc"
+      ]
+    },
+    "test_coverage::src/App.Tests/Storage/ServiceCollectionExtensionsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:29+00:00",
+      "fingerprints": [
+        "676bcb6e65d88a4a"
+      ]
+    },
+    "orphaned::src/App.Tests/PocAuth/PocAuthModelsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:29+00:00",
+      "fingerprints": [
+        "413701c7ea3aaa87"
+      ]
+    },
+    "test_coverage::src/App.Tests/PocAuth/PocAuthModelsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:29+00:00",
+      "fingerprints": [
+        "772aebe30c4a854b"
+      ]
+    },
+    "orphaned::src/App.Tests/PocAuth/PocAuthSettingsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:29+00:00",
+      "fingerprints": [
+        "924f0c1e18877de7"
+      ]
+    },
+    "test_coverage::src/App.Tests/PocAuth/PocAuthSettingsTests.cs": {
+      "note": "Path-independent suppression fingerprints captured by suppress.",
+      "added_at": "2026-10-25T19:20:29+00:00",
+      "fingerprints": [
+        "5195558c8301aff5"
+      ]
     }
   },
   "zone_overrides": {
