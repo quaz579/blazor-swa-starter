@@ -65,29 +65,8 @@
     "orphaned::src/App.Tests/Web/DelegateHttpMessageHandler.cs",
     "test_coverage::src/App.Tests/Web/DelegateHttpMessageHandler.cs",
     "test_coverage::src/App.Tests/Functions/ItemsFunctionTests.cs",
-    "test_coverage::src/App.Api/PocAuth/PocAuthService.cs",
-    "test_coverage::src/App.Api/Functions/ItemsFunction.cs",
-    "test_coverage::src/App.Web/Services/PocAuthState.cs",
-    "test_coverage::src/App.Api/PocAuth/AuthFunction.cs",
-    "test_coverage::src/App.Api/PocAuth/TablePocAuthStore.cs",
-    "test_coverage::src/App.Api/Storage/BlobJsonStore.cs",
-    "test_coverage::src/App.Web/Services/ItemsApiClient.cs",
     "test_coverage::src/App.Tests/Functions/TestHttpRequestData.cs",
-    "test_coverage::src/App.Api/PocAuth/PocAuthModels.cs",
-    "test_coverage::src/App.Api/PocAuth/PocPasswordHasher.cs",
-    "test_coverage::src/App.Api/PocAuth/PocPasswordPolicy.cs",
     "test_coverage::src/App.Tests/Functions/HealthFunctionTests.cs",
-    "test_coverage::src/App.Api/Storage/ServiceCollectionExtensions.cs",
-    "test_coverage::src/App.Api/Functions/HealthFunction.cs",
-    "test_coverage::src/App.Core/Models/CreateItemRequestValidator.cs",
-    "test_coverage::src/App.Api/Storage/StorageClients.cs",
-    "test_coverage::src/App.Api/Storage/StorageConnection.cs",
-    "test_coverage::src/App.Api/PocAuth/PocAuthSettings.cs",
-    "test_coverage::src/App.Api/PocAuth/ServiceCollectionExtensions.cs",
-    "test_coverage::src/App.Web/Services/ApiException.cs",
-    "test_coverage::src/App.Api/Storage/BlobJsonStoreOptions.cs",
-    "test_coverage::src/App.Core/Models/Item.cs",
-    "test_coverage::src/App.Core/Storage/IBlobJsonStore.cs",
     "shellcheck_warning::stop-local.sh::shellcheck_warning::8",
     "shellcheck_warning::stop-e2e.sh::shellcheck_warning::8",
     "shellcheck_warning::start-local.sh::shellcheck_warning::10",
@@ -467,55 +446,6 @@
         "25a521ee1ef8aebe"
       ]
     },
-    "test_coverage::src/App.Api/PocAuth/PocAuthService.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:19+00:00",
-      "fingerprints": [
-        "dfa9a75fbc66db7f"
-      ]
-    },
-    "test_coverage::src/App.Api/Functions/ItemsFunction.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:19+00:00",
-      "fingerprints": [
-        "da95a2aca812a10e"
-      ]
-    },
-    "test_coverage::src/App.Web/Services/PocAuthState.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:20+00:00",
-      "fingerprints": [
-        "7373feb84d2e9556"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/AuthFunction.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:20+00:00",
-      "fingerprints": [
-        "a8e6ea36e17bc188"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/TablePocAuthStore.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:20+00:00",
-      "fingerprints": [
-        "5a545c23b7907993"
-      ]
-    },
-    "test_coverage::src/App.Api/Storage/BlobJsonStore.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:20+00:00",
-      "fingerprints": [
-        "475e8367eb9fea0e"
-      ]
-    },
-    "test_coverage::src/App.Web/Services/ItemsApiClient.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:21+00:00",
-      "fingerprints": [
-        "e984b9ce3addcc4f"
-      ]
-    },
     "test_coverage::src/App.Tests/Functions/TestHttpRequestData.cs": {
       "note": "Path-independent suppression fingerprints captured by suppress.",
       "added_at": "2026-10-25T15:32:21+00:00",
@@ -523,109 +453,11 @@
         "40a65c8e932b08ff"
       ]
     },
-    "test_coverage::src/App.Api/PocAuth/PocAuthModels.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:21+00:00",
-      "fingerprints": [
-        "40dfd661f6afb6d9"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/PocPasswordHasher.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:21+00:00",
-      "fingerprints": [
-        "77e76f71f29b0c20"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/PocPasswordPolicy.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:21+00:00",
-      "fingerprints": [
-        "6d9e074d93b7651f"
-      ]
-    },
     "test_coverage::src/App.Tests/Functions/HealthFunctionTests.cs": {
       "note": "Path-independent suppression fingerprints captured by suppress.",
       "added_at": "2026-10-25T15:32:22+00:00",
       "fingerprints": [
         "cc95f90580c8cdfb"
-      ]
-    },
-    "test_coverage::src/App.Api/Storage/ServiceCollectionExtensions.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:22+00:00",
-      "fingerprints": [
-        "0470d2a60e38e83f"
-      ]
-    },
-    "test_coverage::src/App.Api/Functions/HealthFunction.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:22+00:00",
-      "fingerprints": [
-        "a610c69dbfda3c25"
-      ]
-    },
-    "test_coverage::src/App.Core/Models/CreateItemRequestValidator.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:22+00:00",
-      "fingerprints": [
-        "903d3b5aaf0e119d"
-      ]
-    },
-    "test_coverage::src/App.Api/Storage/StorageClients.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:22+00:00",
-      "fingerprints": [
-        "7c1abc6625fe1aea"
-      ]
-    },
-    "test_coverage::src/App.Api/Storage/StorageConnection.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:23+00:00",
-      "fingerprints": [
-        "71383bf6ba2fee52"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/PocAuthSettings.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:23+00:00",
-      "fingerprints": [
-        "1c55766f3295a24a"
-      ]
-    },
-    "test_coverage::src/App.Api/PocAuth/ServiceCollectionExtensions.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:23+00:00",
-      "fingerprints": [
-        "505f624b23566469"
-      ]
-    },
-    "test_coverage::src/App.Web/Services/ApiException.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:23+00:00",
-      "fingerprints": [
-        "c2bed97e1e6ec2db"
-      ]
-    },
-    "test_coverage::src/App.Api/Storage/BlobJsonStoreOptions.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:24+00:00",
-      "fingerprints": [
-        "dea0ff878491a7a2"
-      ]
-    },
-    "test_coverage::src/App.Core/Models/Item.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:24+00:00",
-      "fingerprints": [
-        "01b5d9ac64e2b72c"
-      ]
-    },
-    "test_coverage::src/App.Core/Storage/IBlobJsonStore.cs": {
-      "note": "Path-independent suppression fingerprints captured by suppress.",
-      "added_at": "2026-10-25T15:32:24+00:00",
-      "fingerprints": [
-        "4fa7c099c08a1e25"
       ]
     },
     "shellcheck_warning::stop-local.sh::shellcheck_warning::8": {
