@@ -15,6 +15,58 @@ public sealed class ItemsApiClientTests
         return new ItemsApiClient(httpClient);
     }
 
+    [Fact]
+    public async Task GetItemsAsync_NullCollection_ThrowsApiExceptionPreserving200()
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok<List<Item>?>(null)));
+
+        var act = () => client.GetItemsAsync();
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(200);
+        exception.Which.Message.Should().Be("The API returned a null item list.");
+    }
+
+    [Fact]
+    public async Task GetItemsAsync_EmptyArray_ReturnsAnEmptyList()
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok(Array.Empty<Item>())));
+
+        var items = await client.GetItemsAsync();
+
+        items.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(null, "Widget")]
+    [InlineData("item-id", null)]
+    [InlineData(null, null)]
+    public async Task GetItemsAsync_NullRequiredProperties_ThrowsApiExceptionPreservingStatus(string? id, string? name)
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok(new[] { new { id, name } })));
+
+        var act = () => client.GetItemsAsync();
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(200);
+        exception.Which.Message.Should().Be("The API returned an item with a null id or name.");
+    }
+
+    [Theory]
+    [InlineData(null, "Widget")]
+    [InlineData("item-id", null)]
+    [InlineData(null, null)]
+    public async Task CreateItemAsync_NullRequiredProperties_ThrowsApiExceptionPreservingStatus(string? id, string? name)
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Created(new { id, name })));
+
+        var act = () => client.CreateItemAsync(new CreateItemRequest { Name = "Widget" });
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(201);
+        exception.Which.Message.Should().Be("The API returned an item with a null id or name.");
+    }
+
     [Theory]
     [InlineData("[null]")]
     [InlineData("[{},null]")]

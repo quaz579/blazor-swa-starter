@@ -14,17 +14,21 @@ public sealed class ItemsPageTests : TestContext
     private void RegisterApiClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle) =>
         Services.AddSingleton(new ItemsApiClient(DelegateHttpMessageHandler.CreateClient(handle)));
 
-    [Fact]
-    public void Items_ResponseContainsNullItem_ShowsErrorWithoutRenderingRows()
+    [Theory]
+    [InlineData("[null]", "null item")]
+    [InlineData("null", "null item list")]
+    [InlineData("[{\"id\":null,\"name\":\"Widget\"}]", "null id or name")]
+    [InlineData("[{\"id\":\"item-id\",\"name\":null}]", "null id or name")]
+    public void Items_InvalidListResponse_ShowsErrorWithoutRenderingRows(string json, string error)
     {
         RegisterApiClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent("[null]", Encoding.UTF8, "application/json"),
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
         }));
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("null item"));
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain(error));
         cut.FindAll("[data-testid='item-row']").Should().BeEmpty();
     }
 

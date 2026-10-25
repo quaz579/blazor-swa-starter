@@ -22,13 +22,20 @@ test('shows the HTTP status code when the items API fails', async ({ page }) => 
   await expect(items.error).toContainText('500');
 });
 
-test('a successful response containing a null item shows an inline error', async ({ page }) => {
-  await page.route('**/api/items', (route) => route.fulfill({ json: [null] }));
-  const items = new ItemsPage(page);
+for (const invalid of [
+  { name: 'a null collection', json: null, error: 'null item list' },
+  { name: 'a null item', json: [null], error: 'null item' },
+  { name: 'an item with a null id', json: [{ id: null, name: 'Widget' }], error: 'null id or name' },
+  { name: 'an item with a null name', json: [{ id: 'item-id', name: null }], error: 'null id or name' },
+]) {
+  test(`a successful response containing ${invalid.name} shows an inline error`, async ({ page }) => {
+    await page.route('**/api/items', (route) => route.fulfill({ json: invalid.json }));
+    const items = new ItemsPage(page);
 
-  await items.goto();
+    await items.goto();
 
-  await expect(items.error).toContainText('null item');
-  await expect(page.getByTestId('item-row')).toHaveCount(0);
-  await expect(page.locator('#blazor-error-ui')).toBeHidden();
-});
+    await expect(items.error).toContainText(invalid.error);
+    await expect(page.getByTestId('item-row')).toHaveCount(0);
+    await expect(page.locator('#blazor-error-ui')).toBeHidden();
+  });
+}
