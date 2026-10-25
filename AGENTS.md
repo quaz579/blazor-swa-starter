@@ -99,13 +99,15 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
   `POST /api/auth/logout` -> 204 + `Max-Age=0`. Failed browser sign-out keeps the current identity
   visible and offers retry until the server confirms success. Browser auth commands return HTTP,
   network, and internal-timeout failures as error results; caller-requested cancellation propagates.
+  Browser identities require a nonblank username and nonblank role entries; an empty roles array is valid.
   `GET /api/auth/me` -> always 200, `{"authenticated":false}` or `{"authenticated":true,"username","roles"}`; only gated endpoints return 401.
   `POST /api/auth/change-password` `{currentPassword,newPassword}` (signed in only) -> 204, 400 for a wrong
   current password, a weak new one (8 to 128 characters with a letter and a digit, different from the
   current one) or a bad body, 401 when anonymous, and 409 `{error}` if a concurrent password update
   wins (retry with the new current password). It writes a fresh salt and hash and attempts to revoke
   the caller's other sessions. If the password changes but revocation fails, it returns 200 `{warning}`
-  instead of 204; the password has still changed and other sessions may remain active.
+  instead of 204; the password has still changed and other sessions may remain active. A browser
+  that cannot read the 200 warning displays a fallback warning that revocation could not be confirmed.
   The signed-in nav link and `/change-password` page are always available when
   auth is enabled. A changed password survives restarts because seeding never overwrites an existing user.
   `GET /api/health` stays anonymous.

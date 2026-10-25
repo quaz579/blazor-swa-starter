@@ -6,7 +6,9 @@ namespace App.Web.Services;
 
 public sealed record PocUser(string Username, string[] Roles);
 
-internal sealed record MeResponse(bool Authenticated, string? Username, string[]? Roles);
+internal sealed record LoginResponse(string? Username, string?[]? Roles);
+
+internal sealed record MeResponse(bool Authenticated, string? Username, string?[]? Roles);
 
 internal sealed record ErrorResponse(string? Error);
 
@@ -17,6 +19,7 @@ public sealed record PasswordChangeResult(string? Error, string? Warning);
 public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+    private const string UnconfirmedRevocationWarning = "Password changed, but sign-out of other devices could not be confirmed.";
     private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
@@ -70,17 +73,18 @@ public sealed class PocAuthState
                 return $"Sign-in failed with status {(int)response.StatusCode}.";
             }
 
-            PocUser? user;
+            LoginResponse? identity;
             try
             {
-                user = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: timeout.Token);
+                identity = await response.Content.ReadFromJsonAsync<LoginResponse>(cancellationToken: timeout.Token);
             }
             catch (Exception ex) when (ex is JsonException or NotSupportedException)
             {
                 return "Sign-in failed: the API returned an unexpected response.";
             }
 
-            if (user is null || string.IsNullOrWhiteSpace(user.Username) || user.Roles is null)
+            var user = CreateValidatedUser(identity?.Username, identity?.Roles);
+            if (user is null)
             {
                 return "Sign-in failed: the API returned an unexpected response.";
             }
@@ -168,11 +172,11 @@ public sealed class PocAuthState
         try
         {
             var body = await response.Content.ReadFromJsonAsync<WarningResponse>(cancellationToken: cancellationToken);
-            return string.IsNullOrWhiteSpace(body?.Warning) ? null : body.Warning;
+            return string.IsNullOrWhiteSpace(body?.Warning) ? UnconfirmedRevocationWarning : body.Warning;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            return null;
+            return UnconfirmedRevocationWarning;
         }
     }
 
@@ -189,6 +193,27 @@ public sealed class PocAuthState
         }
     }
 
+    private static PocUser? CreateValidatedUser(string? username, string?[]? roles)
+    {
+        if (string.IsNullOrWhiteSpace(username) || roles is null)
+        {
+            return null;
+        }
+
+        var validatedRoles = new string[roles.Length];
+        for (var index = 0; index < roles.Length; index++)
+        {
+            var role = roles[index];
+            if (string.IsNullOrWhiteSpace(role))
+            {
+                return null;
+            }
+            validatedRoles[index] = role;
+        }
+
+        return new PocUser(username, validatedRoles);
+    }
+
     private async Task<PocUser?> FetchMeAsync(CancellationToken cancellationToken)
     {
         try
@@ -200,8 +225,8 @@ public sealed class PocAuthState
             }
 
             var me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken: cancellationToken);
-            return me is { Authenticated: true, Username: not null }
-                ? new PocUser(me.Username, me.Roles ?? [])
+            return me is { Authenticated: true }
+                ? CreateValidatedUser(me.Username, me.Roles)
                 : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)

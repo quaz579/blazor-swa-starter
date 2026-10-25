@@ -17,6 +17,23 @@ public sealed class PocAuthStateTests : TestContext
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
+    [Theory]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[null]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\"admin\",null]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\" \"]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":null}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\"}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"\",\"roles\":[]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\" \",\"roles\":[]}")]
+    public async Task InitializeAsync_IncompleteIdentity_DoesNotPublishAUser(string body)
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
+
+        await state.InitializeAsync();
+
+        state.User.Should().BeNull();
+    }
+
     [Fact]
     public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe()
     {
@@ -43,6 +60,10 @@ public sealed class PocAuthStateTests : TestContext
     [InlineData("{\"username\":\" \",\"roles\":[]}")]
     [InlineData("{\"username\":\"admin\"}")]
     [InlineData("{\"username\":\"admin\",\"roles\":null}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[null]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\"admin\",null]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\" \"]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\"admin\",\"\"]}")]
     public async Task LoginAsync_IncompleteIdentity_ReturnsErrorWithoutSigningIn(string body)
     {
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
@@ -231,12 +252,20 @@ public sealed class PocAuthStateTests : TestContext
         result.Warning.Should().Be("Password changed, but other devices could not be signed out.");
     }
 
-    [Fact]
-    public async Task ChangePassword_OkWithUnreadableBody_StillSucceedsWithoutAWarning()
+    [Theory]
+    [InlineData("<html>")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    [InlineData("{\"warning\": null}")]
+    [InlineData("{\"warning\": \" \"}")]
+    public async Task ChangePasswordAsync_UnreadableOrMissingWarning_ReturnsUnconfirmedRevocationWarning(string body)
     {
-        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "<html>")), out _);
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
 
-        (await state.ChangePasswordAsync("a", "b")).Should().Be(new PasswordChangeResult(null, null));
+        var result = await state.ChangePasswordAsync("old-pass-1", "new-pass-2");
+
+        result.Error.Should().BeNull();
+        result.Warning.Should().Be("Password changed, but sign-out of other devices could not be confirmed.");
     }
 
     [Fact]

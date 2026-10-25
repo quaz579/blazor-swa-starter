@@ -179,6 +179,23 @@ test.describe('POC auth change password', () => {
     expect(problems).toEqual([]);
   });
 
+  for (const kind of ['missing', 'unreadable']) {
+    test(`a ${kind} password-change warning reports unconfirmed revocation`, async ({ page }) => {
+      const user = await loginAs(page);
+      await page.goto('/change-password');
+      await page.route('**/api/auth/change-password', (route) => kind === 'missing'
+        ? route.fulfill({ json: {} })
+        : route.fulfill({ status: 200, contentType: 'text/html', body: '<html>unreadable response' }));
+
+      await fillAndSubmit(page, user.password, NEW_PASSWORD);
+
+      await expect(page.getByTestId('change-password-warning')).toHaveText('Password changed, but sign-out of other devices could not be confirmed.');
+      await expect(page.getByTestId('change-password-success')).toHaveCount(0);
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+      await expectNoErrorOverlay(page);
+    });
+  }
+
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('400'));
     const user = await loginAs(page);

@@ -83,18 +83,24 @@ test.describe('POC auth', () => {
     await expect(page.getByTestId('nav-login')).toBeVisible();
   });
 
-  test('an incomplete successful login response stays signed out and shows an error', async ({ page }) => {
-    await page.route('**/api/auth/login', (route) => route.fulfill({ json: {} }));
-    await page.goto('/login');
-    await page.getByTestId('login-username').fill('fixture-user');
-    await page.getByTestId('login-password').fill('fixture-pass1');
-    await page.getByTestId('login-submit').click();
+  for (const invalid of [
+    { name: 'missing fields', body: {} },
+    { name: 'a null role', body: { username: 'fixture-user', roles: [null] } },
+    { name: 'a mixed null role', body: { username: 'fixture-user', roles: ['user', null] } },
+  ]) {
+    test(`an invalid successful login with ${invalid.name} stays signed out and shows an error`, async ({ page }) => {
+      await page.route('**/api/auth/login', (route) => route.fulfill({ json: invalid.body }));
+      await page.goto('/login');
+      await page.getByTestId('login-username').fill('fixture-user');
+      await page.getByTestId('login-password').fill('fixture-pass1');
+      await page.getByTestId('login-submit').click();
 
-    await expect(page.getByTestId('login-error')).toHaveText('Sign-in failed: the API returned an unexpected response.');
-    await expect(page.getByTestId('nav-login')).toBeVisible();
-    await expect(page.getByTestId('nav-user')).toHaveCount(0);
-    await expect(page.locator('#blazor-error-ui')).toBeHidden();
-  });
+      await expect(page.getByTestId('login-error')).toHaveText('Sign-in failed: the API returned an unexpected response.');
+      await expect(page.getByTestId('nav-login')).toBeVisible();
+      await expect(page.getByTestId('nav-user')).toHaveCount(0);
+      await expect(page.locator('#blazor-error-ui')).toBeHidden();
+    });
+  }
 
   test('a delayed anonymous session probe cannot replace a successful sign-in', async ({ page }) => {
     const user = pocUser();
