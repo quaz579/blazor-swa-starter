@@ -671,7 +671,8 @@
     "src/App.Tests/Web/HomeTests.cs": "test",
     "src/App.Tests/Web/ItemsApiClientTests.cs": "test",
     "src/App.Tests/Web/ItemsPageTests.cs": "test",
-    "src/App.Tests/Web/PocAuthStateTests.cs": "test"
+    "src/App.Tests/Web/PocAuthStateTests.cs": "test",
+    "src/App.Tests/Web/PocAuthSessionTests.cs": "test"
   },
   "review_dimensions": [],
   "large_files_threshold": 0,

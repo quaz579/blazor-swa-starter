@@ -31,6 +31,42 @@ public sealed class AuthFunctionTests : IDisposable
 
     private static string TokenFrom(string setCookie) => setCookie.Split(';')[0]["poc_session=".Length..];
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AuthRequest_RequestBodyReadFails_PropagatesTheOperationalFailure(bool changePassword, bool cancelled)
+    {
+        var login = await _function.Login(TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/login",
+            new { username = "requester@example.com", password = "Ch@nageM3" }), CancellationToken.None);
+        var request = TestHttpRequestData.CreateRequest("POST", changePassword
+            ? "http://localhost/api/auth/change-password"
+            : "http://localhost/api/auth/login");
+        request.Headers.Add("Cookie", SetCookie(login).Split(';')[0]);
+        Exception failure = cancelled ? new OperationCanceledException("read canceled") : new IOException("read failed");
+        var body = Substitute.For<Stream>();
+        body.CanRead.Returns(true);
+        body.ReadAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ValueTask.FromException<int>(failure));
+        request.Body.Returns(body);
+
+        var act = () => changePassword
+            ? _function.ChangePassword(request, CancellationToken.None)
+            : _function.Login(request, CancellationToken.None);
+
+        var thrown = await act.Should().ThrowExactlyAsync<AggregateException>();
+        var inner = thrown.Which.InnerExceptions.Should().ContainSingle().Which;
+        if (cancelled)
+        {
+            inner.Should().BeOfType<TaskCanceledException>();
+        }
+        else
+        {
+            inner.Should().BeSameAs(failure);
+        }
+    }
+
     [Fact]
     public async Task Login_ValidCredentials_Returns200WithUserAndSessionCookie()
     {

@@ -4,7 +4,7 @@ import { pocAuthEnabled } from '../helpers/poc-auth';
 test.describe('POC auth disabled', () => {
   test.skip(pocAuthEnabled(), 'POC auth is enabled');
 
-  test('auth endpoints are inert and no sign-in UI is shown', { tag: '@smoke' }, async ({ page, request }) => {
+  test('auth endpoints are inert and no sign-in UI is shown', async ({ page, request }) => {
     expect((await request.get('/api/auth/me')).status()).toBe(404);
 
     await page.goto('/');

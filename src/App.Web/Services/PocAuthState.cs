@@ -18,10 +18,11 @@ public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
     private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
-    private static readonly TimeSpan ChangePasswordTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;
     private Task? _initialization;
+    private int _revision;
 
     public PocAuthState(HttpClient http, bool enabled)
     {
@@ -44,47 +45,59 @@ public sealed class PocAuthState
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ProbeTimeout);
-        User = await FetchMeAsync(timeout.Token);
-        Changed?.Invoke();
+        var revision = _revision;
+        var user = await FetchMeAsync(timeout.Token);
+        if (revision == _revision)
+        {
+            SetUser(user);
+        }
     }
 
     public async Task<string?> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
     {
-        using var response = await _http.PostAsJsonAsync("api/auth/login", new { username, password }, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            return "Invalid username or password.";
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return $"Sign-in failed with status {(int)response.StatusCode}.";
-        }
-
-        PocUser? user;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
-            user = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken);
-        }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
-        {
-            return "Sign-in failed: the API returned an unexpected response.";
-        }
+            using var response = await _http.PostAsJsonAsync("api/auth/login", new { username, password }, timeout.Token);
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                return "Invalid username or password.";
+            }
 
-        if (user is null || string.IsNullOrWhiteSpace(user.Username) || user.Roles is null)
-        {
-            return "Sign-in failed: the API returned an unexpected response.";
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Sign-in failed with status {(int)response.StatusCode}.";
+            }
 
-        User = user;
-        Changed?.Invoke();
-        return null;
+            PocUser? user;
+            try
+            {
+                user = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: timeout.Token);
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                return "Sign-in failed: the API returned an unexpected response.";
+            }
+
+            if (user is null || string.IsNullOrWhiteSpace(user.Username) || user.Roles is null)
+            {
+                return "Sign-in failed: the API returned an unexpected response.";
+            }
+
+            SetUser(user);
+            return null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
+        {
+            return "Could not reach the API. Try again.";
+        }
     }
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ChangePasswordTimeout);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
             using var response = await _http.PostAsJsonAsync("api/auth/change-password", new { currentPassword, newPassword }, timeout.Token);
@@ -95,8 +108,7 @@ public sealed class PocAuthState
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                User = null;
-                Changed?.Invoke();
+                SetUser(null);
                 return new("Your session has expired. Sign in again.", null);
             }
 
@@ -112,23 +124,37 @@ public sealed class PocAuthState
 
             return new($"Could not change the password (status {(int)response.StatusCode}). Try again.", null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
         {
             return new("Could not reach the API. Try again.", null);
         }
     }
 
-    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    public async Task<string?> LogoutAsync(CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
-            using var response = await _http.PostAsync("api/auth/logout", content: null, cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-        }
+            using var response = await _http.PostAsync("api/auth/logout", content: null, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Sign-out failed with status {(int)response.StatusCode}. Try again.";
+            }
 
-        User = null;
+            SetUser(null);
+            return null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
+        {
+            return "Could not reach the API. Try again.";
+        }
+    }
+
+    private void SetUser(PocUser? user)
+    {
+        _revision++;
+        User = user;
         Changed?.Invoke();
     }
 

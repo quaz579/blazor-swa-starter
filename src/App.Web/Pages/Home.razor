@@ -1,5 +1,5 @@
 @page "/"
-@inject ItemsApiClient Api
+@inject HttpClient Http
 
 <PageTitle>Blazor SWA Starter</PageTitle>
 
@@ -16,6 +16,14 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _health = await Api.CheckHealthAsync();
+        try
+        {
+            using var response = await Http.GetAsync("api/health");
+            _health = response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        {
+            _health = false;
+        }
     }
 }

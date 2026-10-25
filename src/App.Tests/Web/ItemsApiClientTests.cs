@@ -15,33 +15,18 @@ public sealed class ItemsApiClientTests
     }
 
     [Fact]
-    public async Task CheckHealthAsync_HealthEndpointReturns200_ReturnsTrue()
+    public async Task CreateItemAsync_CreatedResponseContainsNull_ThrowsApiExceptionPreserving201()
     {
-        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("null", Encoding.UTF8, "application/json"),
+        }));
 
-        var result = await client.CheckHealthAsync();
+        var act = () => client.CreateItemAsync(new CreateItemRequest { Name = "Widget" });
 
-        result.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task CheckHealthAsync_HealthEndpointReturns500_ReturnsFalse()
-    {
-        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
-
-        var result = await client.CheckHealthAsync();
-
-        result.Should().BeFalse();
-    }
-
-    [Fact]
-    public async Task CheckHealthAsync_NetworkFailure_ReturnsFalse()
-    {
-        var client = CreateClient((_, _) => throw new HttpRequestException("boom"));
-
-        var result = await client.CheckHealthAsync();
-
-        result.Should().BeFalse();
+        var exception = await act.Should().ThrowAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(201);
+        exception.Which.Message.Should().Be("The API returned an empty body for a created item.");
     }
 
     [Fact]

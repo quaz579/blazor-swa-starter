@@ -136,13 +136,17 @@ public sealed class PocAuthStateTests : TestContext
     }
 
     [Fact]
-    public async Task Logout_WhenTheRequestTimesOut_StillSignsOutLocally()
+    public async Task LogoutAsync_RequestTimesOut_PreservesTheSignedInIdentity()
     {
-        var state = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
+        var state = Create(true, request => request.RequestUri!.AbsolutePath.EndsWith("login")
+            ? Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[\"admin\"]}"))
+            : throw new TaskCanceledException("timeout"), out _);
+        await state.LoginAsync("admin", "fixture-pass1");
 
-        await state.LogoutAsync();
+        var error = await state.LogoutAsync();
 
-        state.IsSignedIn.Should().BeFalse();
+        error.Should().Be("Could not reach the API. Try again.");
+        state.User!.Username.Should().Be("admin");
     }
 
     [Fact]

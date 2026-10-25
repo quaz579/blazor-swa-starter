@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -22,7 +23,6 @@ public sealed class AuthFunction
 
     internal sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
 
-    /// <summary>POST /api/auth/login</summary>
     [Function("PocAuthLogin")]
     public async Task<HttpResponseData> Login(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/login")] HttpRequestData req,
@@ -38,7 +38,7 @@ public sealed class AuthFunction
         {
             request = await req.ReadFromJsonAsync<LoginRequest>(cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is JsonException or AggregateException { InnerException: JsonException, InnerExceptions.Count: 1 })
         {
             _logger.LogWarning(ex, "Rejected malformed login body");
             request = null;
@@ -67,7 +67,6 @@ public sealed class AuthFunction
         return response;
     }
 
-    /// <summary>POST /api/auth/logout</summary>
     [Function("PocAuthLogout")]
     public async Task<HttpResponseData> Logout(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/logout")] HttpRequestData req,
@@ -84,7 +83,6 @@ public sealed class AuthFunction
         return response;
     }
 
-    /// <summary>GET /api/auth/me</summary>
     [Function("PocAuthMe")]
     public async Task<HttpResponseData> Me(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "auth/me")] HttpRequestData req,
@@ -107,7 +105,6 @@ public sealed class AuthFunction
         return response;
     }
 
-    /// <summary>POST /api/auth/change-password</summary>
     [Function("PocAuthChangePassword")]
     public async Task<HttpResponseData> ChangePassword(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "auth/change-password")] HttpRequestData req,
@@ -129,7 +126,7 @@ public sealed class AuthFunction
         {
             request = await req.ReadFromJsonAsync<ChangePasswordRequest>(cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is JsonException or AggregateException { InnerException: JsonException, InnerExceptions.Count: 1 })
         {
             _logger.LogWarning(ex, "Rejected malformed change-password body");
             request = null;

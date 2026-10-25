@@ -3,7 +3,6 @@ using App.Core.Models;
 
 namespace App.Web.Services;
 
-/// <summary>Thin typed client over the <c>/api/items</c> and <c>/api/health</c> endpoints.</summary>
 public sealed class ItemsApiClient
 {
     private readonly HttpClient _http;
@@ -11,19 +10,6 @@ public sealed class ItemsApiClient
     public ItemsApiClient(HttpClient http)
     {
         _http = http;
-    }
-
-    public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var response = await _http.GetAsync("api/health", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-            return false;
-        }
     }
 
     public async Task<List<Item>> GetItemsAsync(CancellationToken cancellationToken = default)
@@ -65,7 +51,6 @@ public sealed class ItemsApiClient
         }
         catch
         {
-            // Body wasn't JSON shaped like {"error": "..."}; fall back to the generic message above.
         }
 
         throw new ApiException((int)response.StatusCode, message);

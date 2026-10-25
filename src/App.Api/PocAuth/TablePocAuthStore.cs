@@ -59,7 +59,7 @@ public sealed class TablePocAuthStore : IPocAuthStore
         await _sessions.DeleteEntityAsync(PocSessionEntity.Partition, tokenHash, cancellationToken: cancellationToken);
     }
 
-    public async Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
+    public async Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string salt, string passwordHash, int iterations, CancellationToken cancellationToken = default)
     {
         await EnsureTablesAsync(cancellationToken);
         var update = new PocUserEntity

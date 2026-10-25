@@ -19,7 +19,7 @@ public interface IPocAuthStore
 
     Task DeleteSessionAsync(string tokenHash, CancellationToken cancellationToken = default);
 
-    Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default);
+    Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string salt, string passwordHash, int iterations, CancellationToken cancellationToken = default);
 
     Task DeleteSessionsForUserAsync(string username, string? exceptTokenHash, CancellationToken cancellationToken = default);
 }

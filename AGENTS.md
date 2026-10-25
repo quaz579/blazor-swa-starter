@@ -80,7 +80,9 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
   iteration count stored per row. Seeded idempotently on first use from `PocAuthSeed.g.cs`.
 - `POST /api/auth/login` `{username,password}` -> 200 `{username,roles}` + `poc_session` cookie
   (HttpOnly, SameSite=Lax, Secure only over HTTPS), 400 bad body, 401 bad credentials.
-  `POST /api/auth/logout` -> 204 + `Max-Age=0`. `GET /api/auth/me` -> always 200, `{"authenticated":false}` or `{"authenticated":true,"username","roles"}`; only gated endpoints return 401.
+  `POST /api/auth/logout` -> 204 + `Max-Age=0`. Failed browser sign-out keeps the current identity
+  visible and offers retry until the server confirms success. Browser auth commands return HTTP,
+  network, and internal-timeout failures as error results; caller-requested cancellation propagates. `GET /api/auth/me` -> always 200, `{"authenticated":false}` or `{"authenticated":true,"username","roles"}`; only gated endpoints return 401.
   `POST /api/auth/change-password` `{currentPassword,newPassword}` (signed in only) -> 204, 400 for a wrong
   current password, a weak new one (8 to 128 characters with a letter and a digit, different from the
   current one) or a bad body, 401 when anonymous. It writes a fresh salt and hash and revokes the
