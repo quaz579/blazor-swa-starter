@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using App.Api.Storage;
 using App.Core.Models;
 using AwesomeAssertions;
@@ -10,12 +9,6 @@ using NSubstitute;
 
 namespace App.Tests.Storage;
 
-/// <summary>
-/// Pure key/prefix-validation tests. These never touch the network — every
-/// <see cref="BlobJsonStore{T}"/> method validates before any storage I/O, so these run
-/// deterministically fast whether or not Azurite is up. The real round-trip lives in
-/// <see cref="BlobJsonStoreAzuriteTests"/>.
-/// </summary>
 public sealed class BlobJsonStoreTests
 {
     private readonly BlobJsonStore<Item> _store = new(
@@ -100,15 +93,14 @@ public sealed class BlobJsonStoreTests
     [Fact]
     public async Task PutAsync_KeyContainsTraversal_FailsClosedBeforeAnyStorageIo()
     {
-        // Regression guard for a fixed ordering bug: validation must run before the
-        // CreateIfNotExistsAsync network call, not after it — otherwise this still throws
-        // ArgumentException eventually, just slowly (or as a network exception with no backend).
-        var stopwatch = Stopwatch.StartNew();
+        var container = Substitute.For<BlobContainerClient>();
+        var store = new BlobJsonStore<Item>(container,
+            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
 
-        var act = async () => await _store.PutAsync("../../secrets", new Item());
+        var act = async () => await store.PutAsync("../../secrets", new Item());
 
-        await act.Should().ThrowAsync<ArgumentException>();
-        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        await act.Should().ThrowExactlyAsync<ArgumentException>();
+        container.ReceivedCalls().Should().BeEmpty();
     }
 
     [Fact]

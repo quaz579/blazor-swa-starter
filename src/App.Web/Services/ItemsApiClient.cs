@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using App.Core.Models;
 
 namespace App.Web.Services;
@@ -16,7 +17,9 @@ public sealed class ItemsApiClient
     {
         using var response = await _http.GetAsync("api/items", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<List<Item>>(cancellationToken: cancellationToken) ?? [];
+        var items = await response.Content.ReadFromJsonAsync<List<Item?>>(cancellationToken: cancellationToken) ?? [];
+        return items.ConvertAll<Item>(item => item
+            ?? throw new ApiException((int)response.StatusCode, "The API returned an item list containing a null item."));
     }
 
     public async Task<Item> CreateItemAsync(CreateItemRequest request, CancellationToken cancellationToken = default)
@@ -49,7 +52,7 @@ public sealed class ItemsApiClient
                 message = problem.Error;
             }
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
         }
 

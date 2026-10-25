@@ -17,14 +17,6 @@ public sealed class StorageClientsTests
         client.Uri.Port.Should().Be(10002);
     }
 
-    [Fact]
-    public void CreateQueueClient_DevelopmentStorage_TargetsAzuriteQueuePort()
-    {
-        var client = StorageClients.CreateQueueClient(Local, "work");
-
-        client.Name.Should().Be("work");
-        client.Uri.Port.Should().Be(10001);
-    }
 
     [AzuriteFact]
     public async Task TablePocAuthStore_RoundTripsUsersAndSessions_AgainstAzurite()

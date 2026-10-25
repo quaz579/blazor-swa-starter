@@ -31,6 +31,32 @@ public sealed class AuthFunctionTests : IDisposable
 
     private static string TokenFrom(string setCookie) => setCookie.Split(';')[0]["poc_session=".Length..];
 
+    [Fact]
+    public async Task ChangePassword_ConcurrentUpdateWins_Returns409WithRetryGuidance()
+    {
+        await _service.SeedAsync();
+        var store = Substitute.For<IPocAuthStore>();
+        store.GetUserAsync("requester@example.com", Arg.Any<CancellationToken>())
+            .Returns(_store.Users["requester@example.com"]);
+        store.GetSessionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new PocSessionEntity
+        {
+            Username = "requester@example.com", Roles = "user", ExpiresUtc = _time.GetUtcNow().AddHours(1),
+        });
+        store.UpdatePasswordAsync(Arg.Any<PocUserEntity>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(PasswordUpdateResult.Conflict);
+        var function = new AuthFunction(new PocAuthService(store, _time, []), _time, NullLogger<AuthFunction>.Instance);
+        var request = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/change-password",
+            new { currentPassword = "Ch@nageM3", newPassword = "Another-pass-9" });
+        request.Headers.Add("Cookie", $"{PocAuthSettings.CookieName}=fixture-session");
+
+        var response = await function.ChangePassword(request, CancellationToken.None);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("error").GetString().Should()
+            .Be("The password was changed by another request. Enter the new current password and try again.");
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
