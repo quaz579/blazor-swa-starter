@@ -9,11 +9,8 @@ namespace App.Tests.Web;
 
 public sealed class HomeTests : TestContext
 {
-    private void RegisterApiClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle)
-    {
-        var httpClient = new HttpClient(new DelegateHttpMessageHandler(handle)) { BaseAddress = new Uri("https://api.test/") };
-        Services.AddSingleton(new ItemsApiClient(httpClient));
-    }
+    private void RegisterApiClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle) =>
+        Services.AddSingleton(new ItemsApiClient(DelegateHttpMessageHandler.CreateClient(handle)));
 
     [Fact]
     public void Home_Renders_RootDataTestId()

@@ -10,18 +10,51 @@ public sealed class PocAuthStateTests : TestContext
 {
     private PocAuthState Create(bool enabled, Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
     {
-        var seen = new List<string>();
-        requests = seen;
-        var http = new HttpClient(new DelegateHttpMessageHandler((req, _) =>
-        {
-            seen.Add($"{req.Method} {req.RequestUri!.AbsolutePath}");
-            return handle(req);
-        })) { BaseAddress = new Uri("https://api.test/") };
+        var http = DelegateHttpMessageHandler.CreateRecordingClient(handle, out requests);
         return new PocAuthState(http, enabled);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+
+    [Fact]
+    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe()
+    {
+        var response = new TaskCompletionSource<HttpResponseMessage>();
+        var state = Create(true, _ => response.Task, out var requests);
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        var first = state.InitializeAsync();
+        var second = state.InitializeAsync();
+
+        second.IsCompleted.Should().BeFalse();
+        requests.Should().Equal("GET /api/auth/me");
+        response.SetResult(Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}"));
+        await Task.WhenAll(first, second);
+
+        state.User!.Username.Should().Be("admin");
+        notifications.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"username\":null,\"roles\":[]}")]
+    [InlineData("{\"username\":\" \",\"roles\":[]}")]
+    [InlineData("{\"username\":\"admin\"}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":null}")]
+    public async Task LoginAsync_IncompleteIdentity_ReturnsErrorWithoutSigningIn(string body)
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        var error = await state.LoginAsync("admin", "fixture-pass1");
+
+        error.Should().Be("Sign-in failed: the API returned an unexpected response.");
+        state.User.Should().BeNull();
+        notifications.Should().Be(0);
+    }
 
     [Fact]
     public async Task Initialize_WhenDisabled_NeverCallsTheApi()

@@ -21,7 +21,7 @@ public sealed class PocAuthState
     private static readonly TimeSpan ChangePasswordTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;
-    private bool _initialized;
+    private Task? _initialization;
 
     public PocAuthState(HttpClient http, bool enabled)
     {
@@ -37,14 +37,11 @@ public sealed class PocAuthState
 
     public bool IsSignedIn => User is not null;
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        if (!Enabled || _initialized)
-        {
-            return;
-        }
+    public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+        Enabled ? _initialization ??= InitializeCoreAsync(cancellationToken) : Task.CompletedTask;
 
-        _initialized = true;
+    private async Task InitializeCoreAsync(CancellationToken cancellationToken)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ProbeTimeout);
         User = await FetchMeAsync(timeout.Token);
@@ -64,20 +61,22 @@ public sealed class PocAuthState
             return $"Sign-in failed with status {(int)response.StatusCode}.";
         }
 
+        PocUser? user;
         try
         {
-            User = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken);
+            user = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
             return "Sign-in failed: the API returned an unexpected response.";
         }
 
-        if (User is null)
+        if (user is null || string.IsNullOrWhiteSpace(user.Username) || user.Roles is null)
         {
             return "Sign-in failed: the API returned an unexpected response.";
         }
 
+        User = user;
         Changed?.Invoke();
         return null;
     }

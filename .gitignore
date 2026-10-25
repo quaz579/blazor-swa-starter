@@ -86,3 +86,5 @@ tests/.test-state.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+.desloppify/

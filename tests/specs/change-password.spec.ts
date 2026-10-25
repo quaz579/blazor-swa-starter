@@ -19,7 +19,7 @@ async function expectNoErrorOverlay(page: Page) {
   await expect(page.locator('#blazor-error-ui')).toBeHidden();
 }
 
-async function changePassword(request: APIRequestContext, currentPassword: string, newPassword: string) {
+function changePassword(request: APIRequestContext, currentPassword: string, newPassword: string) {
   return request.post('/api/auth/change-password', { data: { currentPassword, newPassword } });
 }
 

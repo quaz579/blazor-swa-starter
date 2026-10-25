@@ -2,7 +2,11 @@ using System.Diagnostics;
 using App.Api.Storage;
 using App.Core.Models;
 using AwesomeAssertions;
+using Azure;
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace App.Tests.Storage;
 
@@ -18,6 +22,47 @@ public sealed class BlobJsonStoreTests
         "UseDevelopmentStorage=true",
         new BlobJsonStoreOptions<Item> { Prefix = "items" },
         NullLogger<BlobJsonStore<Item>>.Instance);
+
+    [Theory]
+    [InlineData("BlobNotFound")]
+    [InlineData("ContainerNotFound")]
+    public async Task GetAsync_BlobOrContainerMissing_ReturnsNull(string errorCode)
+    {
+        var blob = Substitute.For<BlobClient>();
+        var container = Substitute.For<BlobContainerClient>();
+        container.GetBlobClient("items/missing.json").Returns(blob);
+        blob.ExistsAsync(Arg.Any<CancellationToken>()).Returns(Response.FromValue(true, Substitute.For<Response>()));
+        blob.DownloadContentAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<Response<BlobDownloadResult>>(new RequestFailedException(404, "Missing", errorCode, null)));
+        var store = new BlobJsonStore<Item>(container,
+            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
+
+        var result = await store.GetAsync("missing");
+
+        result.Should().BeNull();
+        await blob.Received(1).DownloadContentAsync(Arg.Any<CancellationToken>());
+        await blob.DidNotReceive().ExistsAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(403, "AuthorizationFailure")]
+    [InlineData(404, "OtherNotFound")]
+    [InlineData(500, "InternalError")]
+    public async Task GetAsync_UnexpectedStorageFailure_PropagatesException(int status, string errorCode)
+    {
+        var blob = Substitute.For<BlobClient>();
+        var container = Substitute.For<BlobContainerClient>();
+        container.GetBlobClient("items/key.json").Returns(blob);
+        blob.ExistsAsync(Arg.Any<CancellationToken>()).Returns(Response.FromValue(true, Substitute.For<Response>()));
+        var failure = new RequestFailedException(status, "Storage failure", errorCode, null);
+        blob.DownloadContentAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<Response<BlobDownloadResult>>(failure));
+        var store = new BlobJsonStore<Item>(container,
+            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
+
+        var act = () => store.GetAsync("key");
+
+        (await act.Should().ThrowAsync<RequestFailedException>()).Which.Should().BeSameAs(failure);
+    }
 
     [Fact]
     public async Task GetAsync_KeyIsNull_ThrowsArgumentException()

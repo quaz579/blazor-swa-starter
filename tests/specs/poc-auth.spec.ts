@@ -83,6 +83,39 @@ test.describe('POC auth', () => {
     await expect(page.getByTestId('nav-login')).toBeVisible();
   });
 
+  test('an incomplete successful login response stays signed out and shows an error', async ({ page }) => {
+    await page.route('**/api/auth/login', (route) => route.fulfill({ json: {} }));
+    await page.goto('/login');
+    await page.getByTestId('login-username').fill('fixture-user');
+    await page.getByTestId('login-password').fill('fixture-pass1');
+    await page.getByTestId('login-submit').click();
+
+    await expect(page.getByTestId('login-error')).toHaveText('Sign-in failed: the API returned an unexpected response.');
+    await expect(page.getByTestId('nav-login')).toBeVisible();
+    await expect(page.getByTestId('nav-user')).toHaveCount(0);
+    await expect(page.locator('#blazor-error-ui')).toBeHidden();
+  });
+
+  test('the password page waits for the session probe shared with navigation', async ({ page }) => {
+    const user = pocUser();
+    let releaseProbe!: () => void;
+    const probeGate = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    await page.route('**/api/auth/me', async (route) => {
+      await probeGate;
+      await route.fulfill({ json: { authenticated: true, username: user.username, roles: user.roles } });
+    });
+    try {
+      await page.goto('/change-password');
+      await expect(page.getByTestId('change-password-loading')).toBeVisible();
+      await expect(page.getByTestId('change-password-signin-required')).toHaveCount(0);
+      releaseProbe();
+      await expect(page.getByTestId('change-password-submit')).toBeVisible();
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+    } finally {
+      releaseProbe();
+    }
+  });
+
   test('a wrong password on the login page shows an error and keeps the page usable', { tag: '@smoke' }, async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');
