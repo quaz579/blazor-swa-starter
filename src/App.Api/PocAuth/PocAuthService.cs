@@ -2,6 +2,8 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Azure.Functions.Worker.Http;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace App.Api.PocAuth;
 
@@ -22,19 +24,21 @@ public sealed class PocAuthService
     private static readonly string DummyHash = Convert.ToBase64String(new byte[PocPasswordHasher.KeyBytes]);
 
     private readonly IPocAuthStore _store;
+    private readonly ILogger<PocAuthService> _logger;
     private readonly TimeProvider _time;
     private readonly IReadOnlyList<PocSeedUser> _seed;
     private readonly SemaphoreSlim _seedLock = new(1, 1);
     private bool _seeded;
 
-    public PocAuthService(IPocAuthStore store, TimeProvider time)
-        : this(store, time, PocAuthSeed.Users)
+    public PocAuthService(IPocAuthStore store, TimeProvider time, ILogger<PocAuthService>? logger = null)
+        : this(store, time, PocAuthSeed.Users, logger)
     {
     }
 
-    public PocAuthService(IPocAuthStore store, TimeProvider time, IReadOnlyList<PocSeedUser> seed)
+    public PocAuthService(IPocAuthStore store, TimeProvider time, IReadOnlyList<PocSeedUser> seed, ILogger<PocAuthService>? logger = null)
     {
         _store = store;
+        _logger = logger ?? NullLogger<PocAuthService>.Instance;
         _time = time;
         _seed = seed;
     }
@@ -118,7 +122,7 @@ public sealed class PocAuthService
         }
 
         var (salt, hash, iterations) = PocPasswordHasher.Hash(newPassword);
-        switch (await _store.UpdatePasswordAsync(user, hash, salt, iterations, cancellationToken))
+        switch (await _store.UpdatePasswordAsync(user, salt: salt, passwordHash: hash, iterations: iterations, cancellationToken: cancellationToken))
         {
             case PasswordUpdateResult.Conflict:
                 return new(ChangePasswordResult.Conflict, "The password was changed by another request. Enter the new current password and try again.");
@@ -135,6 +139,7 @@ public sealed class PocAuthService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            _logger.LogWarning(ex, "Password changed for {Username}, but other sessions could not be revoked", user.Username);
             return new(ChangePasswordResult.Changed, "Password changed, but other devices could not be signed out.");
         }
 

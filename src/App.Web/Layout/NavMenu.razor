@@ -29,7 +29,11 @@
                 {
                     <span class="nav-link" data-testid="nav-user">@Auth.User!.Username</span>
                     <NavLink class="nav-link" href="change-password" data-testid="nav-change-password">Change password</NavLink>
-                    <button type="button" class="nav-link btn btn-link" data-testid="nav-logout" @onclick="LogoutAsync" @onclick:stopPropagation="true">Sign out</button>
+                    <button type="button" class="nav-link btn btn-link" data-testid="nav-logout" disabled="@_loggingOut" @onclick="LogoutAsync" @onclick:stopPropagation="true">Sign out</button>
+                    @if (_logoutError is not null)
+                    {
+                        <div class="text-warning" role="alert" data-testid="nav-logout-error">@_logoutError</div>
+                    }
                 }
                 else
                 {
@@ -42,6 +46,8 @@
 
 @code {
     private bool collapseNavMenu = true;
+    private bool _loggingOut;
+    private string? _logoutError;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
@@ -51,7 +57,18 @@
         await Auth.InitializeAsync();
     }
 
-    private async Task LogoutAsync() => await Auth.LogoutAsync();
+    private async Task LogoutAsync()
+    {
+        _loggingOut = true;
+        try
+        {
+            _logoutError = await Auth.LogoutAsync();
+        }
+        finally
+        {
+            _loggingOut = false;
+        }
+    }
 
     private void OnAuthChanged() => InvokeAsync(StateHasChanged);
 

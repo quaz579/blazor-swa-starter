@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using App.Core.Models;
 using App.Web.Pages;
 using App.Web.Services;
@@ -10,23 +11,35 @@ namespace App.Tests.Web;
 
 public sealed class ItemsPageTests : TestContext
 {
-    private void RegisterApiClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle)
+    private void RegisterApiClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle) =>
+        Services.AddSingleton(new ItemsApiClient(DelegateHttpMessageHandler.CreateClient(handle)));
+
+    [Theory]
+    [InlineData("[null]", "null item")]
+    [InlineData("null", "null item list")]
+    [InlineData("[{\"id\":null,\"name\":\"Widget\"}]", "null id or name")]
+    [InlineData("[{\"id\":\"item-id\",\"name\":null}]", "null id or name")]
+    public void Items_InvalidListResponse_ShowsErrorWithoutRenderingRows(string json, string error)
     {
-        var httpClient = new HttpClient(new DelegateHttpMessageHandler(handle)) { BaseAddress = new Uri("https://api.test/") };
-        Services.AddSingleton(new ItemsApiClient(httpClient));
+        RegisterApiClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        }));
+
+        var cut = RenderComponent<Items>();
+
+        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain(error));
+        cut.FindAll("[data-testid='item-row']").Should().BeEmpty();
     }
 
     [Fact]
     public void Items_WhileLoading_ShowsLoadingIndicator()
     {
-        // Arrange
         var tcs = new TaskCompletionSource<HttpResponseMessage>();
         RegisterApiClient((_, _) => tcs.Task);
 
-        // Act
         var cut = RenderComponent<Items>();
 
-        // Assert
         cut.Find("[data-testid='items-loading']").Should().NotBeNull();
 
         tcs.SetResult(FakeApiResponses.Ok(new List<Item>()));
@@ -36,7 +49,6 @@ public sealed class ItemsPageTests : TestContext
     [Fact]
     public void Items_ApiReturnsItems_RendersRowsWithNameAndDescription()
     {
-        // Arrange
         var items = new List<Item>
         {
             new() { Id = "1", Name = "First", Description = "First desc", CreatedAt = DateTimeOffset.UtcNow },
@@ -44,10 +56,8 @@ public sealed class ItemsPageTests : TestContext
         };
         RegisterApiClient((_, _) => Task.FromResult(FakeApiResponses.Ok(items)));
 
-        // Act
         var cut = RenderComponent<Items>();
 
-        // Assert
         cut.WaitForAssertion(() => cut.FindAll("[data-testid='item-row']").Should().HaveCount(2));
 
         var firstRow = cut.Find("[data-item-id='1']");
@@ -81,7 +91,6 @@ public sealed class ItemsPageTests : TestContext
     [Fact]
     public void Items_CreateForm_BlankName_ShowsValidationErrorWithoutCallingApi()
     {
-        // Arrange
         var postCount = 0;
         RegisterApiClient((req, _) =>
         {
@@ -94,10 +103,8 @@ public sealed class ItemsPageTests : TestContext
         var cut = RenderComponent<Items>();
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
 
-        // Act
         cut.Find("[data-testid='item-add-button']").Click();
 
-        // Assert
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Name is required.");
         postCount.Should().Be(0);
     }
@@ -105,23 +112,19 @@ public sealed class ItemsPageTests : TestContext
     [Fact]
     public void Items_CreateForm_NameExceeds100Chars_ShowsValidationError()
     {
-        // Arrange
         RegisterApiClient((_, _) => Task.FromResult(FakeApiResponses.Ok(new List<Item>())));
         var cut = RenderComponent<Items>();
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
 
-        // Act
         cut.Find("[data-testid='item-name-input']").Input(new string('a', 101));
         cut.Find("[data-testid='item-add-button']").Click();
 
-        // Assert
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Name must be 100 characters or fewer.");
     }
 
     [Fact]
     public void Items_CreateForm_DescriptionExceeds1000Chars_ShowsValidationErrorWithoutCallingApi()
     {
-        // Arrange
         var postCount = 0;
         RegisterApiClient((req, _) =>
         {
@@ -134,12 +137,10 @@ public sealed class ItemsPageTests : TestContext
         var cut = RenderComponent<Items>();
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
 
-        // Act
         cut.Find("[data-testid='item-name-input']").Input("Widget");
         cut.Find("[data-testid='item-description-input']").Input(new string('a', 1001));
         cut.Find("[data-testid='item-add-button']").Click();
 
-        // Assert
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Description must be 1000 characters or fewer.");
         postCount.Should().Be(0);
     }
@@ -147,7 +148,6 @@ public sealed class ItemsPageTests : TestContext
     [Fact]
     public void Items_CreateForm_ValidInput_CreatesItemAndReloadsList()
     {
-        // Arrange
         var created = new Item { Id = "new-1", Name = "Widget", CreatedAt = DateTimeOffset.UtcNow };
         var postCount = 0;
         RegisterApiClient((req, _) =>
@@ -162,11 +162,9 @@ public sealed class ItemsPageTests : TestContext
         var cut = RenderComponent<Items>();
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
 
-        // Act
         cut.Find("[data-testid='item-name-input']").Input("Widget");
         cut.Find("[data-testid='item-add-button']").Click();
 
-        // Assert
         cut.WaitForAssertion(() => cut.Find("[data-testid='item-row']"));
         postCount.Should().Be(1);
         cut.Find("[data-testid='item-name']").TextContent.Should().Be("Widget");
@@ -175,7 +173,6 @@ public sealed class ItemsPageTests : TestContext
     [Fact]
     public void Items_DeleteButtonClicked_CallsDeleteAndReloadsList()
     {
-        // Arrange
         var item = new Item { Id = "del-1", Name = "ToDelete", CreatedAt = DateTimeOffset.UtcNow };
         var deleteCount = 0;
         RegisterApiClient((req, _) =>
@@ -190,10 +187,8 @@ public sealed class ItemsPageTests : TestContext
         var cut = RenderComponent<Items>();
         cut.WaitForAssertion(() => cut.Find("[data-testid='item-row']"));
 
-        // Act
         cut.Find("[data-testid='item-delete-button']").Click();
 
-        // Assert
         cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
         deleteCount.Should().Be(1);
     }

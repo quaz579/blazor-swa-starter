@@ -3,6 +3,7 @@ using System.Text;
 using App.Core.Models;
 using App.Web.Services;
 using AwesomeAssertions;
+using NSubstitute;
 
 namespace App.Tests.Web;
 
@@ -15,33 +16,141 @@ public sealed class ItemsApiClientTests
     }
 
     [Fact]
-    public async Task CheckHealthAsync_HealthEndpointReturns200_ReturnsTrue()
+    public async Task GetItemsAsync_NullCollection_ThrowsApiExceptionPreserving200()
     {
-        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)));
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok<List<Item>?>(null)));
 
-        var result = await client.CheckHealthAsync();
+        var act = () => client.GetItemsAsync();
 
-        result.Should().BeTrue();
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(200);
+        exception.Which.Message.Should().Be("The API returned a null item list.");
     }
 
     [Fact]
-    public async Task CheckHealthAsync_HealthEndpointReturns500_ReturnsFalse()
+    public async Task GetItemsAsync_EmptyArray_ReturnsAnEmptyList()
     {
-        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok(Array.Empty<Item>())));
 
-        var result = await client.CheckHealthAsync();
+        var items = await client.GetItemsAsync();
 
-        result.Should().BeFalse();
+        items.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(null, "Widget")]
+    [InlineData("item-id", null)]
+    [InlineData(null, null)]
+    public async Task GetItemsAsync_NullRequiredProperties_ThrowsApiExceptionPreservingStatus(string? id, string? name)
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok(new[] { new { id, name } })));
+
+        var act = () => client.GetItemsAsync();
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(200);
+        exception.Which.Message.Should().Be("The API returned an item with a null id or name.");
+    }
+
+    [Theory]
+    [InlineData(null, "Widget")]
+    [InlineData("item-id", null)]
+    [InlineData(null, null)]
+    public async Task CreateItemAsync_NullRequiredProperties_ThrowsApiExceptionPreservingStatus(string? id, string? name)
+    {
+        var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Created(new { id, name })));
+
+        var act = () => client.CreateItemAsync(new CreateItemRequest { Name = "Widget" });
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(201);
+        exception.Which.Message.Should().Be("The API returned an item with a null id or name.");
+    }
+
+    [Theory]
+    [InlineData("[null]")]
+    [InlineData("[{},null]")]
+    public async Task GetItemsAsync_ResponseContainsNullItem_ThrowsApiExceptionPreserving200(string json)
+    {
+        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        }));
+
+        var act = () => client.GetItemsAsync();
+
+        var exception = await act.Should().ThrowExactlyAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(200);
+        exception.Which.Message.Should().Be("The API returned an item list containing a null item.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetItemsAsync_ErrorBodyReadFails_PropagatesTheOperationalFailure(bool cancelled)
+    {
+        using var cancellation = new CancellationTokenSource();
+        var failure = new IOException("error-body stream failed");
+        var stream = Substitute.For<Stream>();
+        stream.CanRead.Returns(true);
+        stream.ReadAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            if (cancelled)
+            {
+                cancellation.Cancel();
+                return ValueTask.FromCanceled<int>(cancellation.Token);
+            }
+            return ValueTask.FromException<int>(failure);
+        });
+        using var content = new LateFailureContent(stream);
+        await content.ReadAsStreamAsync();
+        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = content }));
+
+        var act = () => client.GetItemsAsync(cancellation.Token);
+
+        if (cancelled)
+        {
+            var exception = await act.Should().ThrowExactlyAsync<TaskCanceledException>();
+            exception.Which.CancellationToken.Should().Be(cancellation.Token);
+        }
+        else
+        {
+            var exception = await act.Should().ThrowExactlyAsync<IOException>();
+            exception.Which.Should().BeSameAs(failure);
+        }
+    }
+
+    private sealed class LateFailureContent : HttpContent
+    {
+        private readonly Stream _stream;
+
+        public LateFailureContent(Stream stream) => _stream = stream;
+
+        protected override Task<Stream> CreateContentReadStreamAsync() => Task.FromResult(_stream);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            stream.WriteAsync(Encoding.UTF8.GetBytes("{}")).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     [Fact]
-    public async Task CheckHealthAsync_NetworkFailure_ReturnsFalse()
+    public async Task CreateItemAsync_CreatedResponseContainsNull_ThrowsApiExceptionPreserving201()
     {
-        var client = CreateClient((_, _) => throw new HttpRequestException("boom"));
+        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("null", Encoding.UTF8, "application/json"),
+        }));
 
-        var result = await client.CheckHealthAsync();
+        var act = () => client.CreateItemAsync(new CreateItemRequest { Name = "Widget" });
 
-        result.Should().BeFalse();
+        var exception = await act.Should().ThrowAsync<ApiException>();
+        exception.Which.StatusCode.Should().Be(201);
+        exception.Which.Message.Should().Be("The API returned an empty body for a created item.");
     }
 
     [Fact]

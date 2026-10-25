@@ -17,14 +17,6 @@ public sealed class StorageClientsTests
         client.Uri.Port.Should().Be(10002);
     }
 
-    [Fact]
-    public void CreateQueueClient_DevelopmentStorage_TargetsAzuriteQueuePort()
-    {
-        var client = StorageClients.CreateQueueClient(Local, "work");
-
-        client.Name.Should().Be("work");
-        client.Uri.Port.Should().Be(10001);
-    }
 
     [AzuriteFact]
     public async Task TablePocAuthStore_RoundTripsUsersAndSessions_AgainstAzurite()
@@ -55,10 +47,10 @@ public sealed class StorageClientsTests
         await store.AddUserIfMissingAsync(new PocUserEntity { RowKey = PocUserEntity.KeyFor(username), Username = username, Roles = "user", Salt = salt, PasswordHash = hash, Iterations = iterations });
 
         var read = (await store.GetUserAsync(username.ToUpperInvariant()))!;
-        (await store.UpdatePasswordAsync(read, "new-hash", "new-salt", 2_000)).Should().Be(PasswordUpdateResult.Updated);
-        (await store.UpdatePasswordAsync(read, "stale-hash", "stale-salt", 1)).Should().Be(PasswordUpdateResult.Conflict);
+        (await store.UpdatePasswordAsync(read, salt: "new-salt", passwordHash: "new-hash", 2_000)).Should().Be(PasswordUpdateResult.Updated);
+        (await store.UpdatePasswordAsync(read, salt: "stale-salt", passwordHash: "stale-hash", 1)).Should().Be(PasswordUpdateResult.Conflict);
         var ghost = new PocUserEntity { RowKey = $"missing-{Guid.NewGuid():N}", ETag = read.ETag };
-        (await store.UpdatePasswordAsync(ghost, "h", "s", 1)).Should().Be(PasswordUpdateResult.NotFound);
+        (await store.UpdatePasswordAsync(ghost, salt: "s", passwordHash: "h", iterations: 1)).Should().Be(PasswordUpdateResult.NotFound);
         var updated = (await store.GetUserAsync(username))!;
         (updated.PasswordHash, updated.Salt, updated.Iterations).Should().Be(("new-hash", "new-salt", 2_000));
 

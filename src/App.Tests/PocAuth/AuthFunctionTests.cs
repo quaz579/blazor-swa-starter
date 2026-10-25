@@ -32,6 +32,68 @@ public sealed class AuthFunctionTests : IDisposable
     private static string TokenFrom(string setCookie) => setCookie.Split(';')[0]["poc_session=".Length..];
 
     [Fact]
+    public async Task ChangePassword_ConcurrentUpdateWins_Returns409WithRetryGuidance()
+    {
+        await _service.SeedAsync();
+        var store = Substitute.For<IPocAuthStore>();
+        store.GetUserAsync("requester@example.com", Arg.Any<CancellationToken>())
+            .Returns(_store.Users["requester@example.com"]);
+        store.GetSessionAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new PocSessionEntity
+        {
+            Username = "requester@example.com", Roles = "user", ExpiresUtc = _time.GetUtcNow().AddHours(1),
+        });
+        store.UpdatePasswordAsync(Arg.Any<PocUserEntity>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(PasswordUpdateResult.Conflict);
+        var function = new AuthFunction(new PocAuthService(store, _time, []), _time, NullLogger<AuthFunction>.Instance);
+        var request = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/change-password",
+            new { currentPassword = "Ch@nageM3", newPassword = "Another-pass-9" });
+        request.Headers.Add("Cookie", $"{PocAuthSettings.CookieName}=fixture-session");
+
+        var response = await function.ChangePassword(request, CancellationToken.None);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("error").GetString().Should()
+            .Be("The password was changed by another request. Enter the new current password and try again.");
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AuthRequest_RequestBodyReadFails_PropagatesTheOperationalFailure(bool changePassword, bool cancelled)
+    {
+        var login = await _function.Login(TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/login",
+            new { username = "requester@example.com", password = "Ch@nageM3" }), CancellationToken.None);
+        var request = TestHttpRequestData.CreateRequest("POST", changePassword
+            ? "http://localhost/api/auth/change-password"
+            : "http://localhost/api/auth/login");
+        request.Headers.Add("Cookie", SetCookie(login).Split(';')[0]);
+        Exception failure = cancelled ? new OperationCanceledException("read canceled") : new IOException("read failed");
+        var body = Substitute.For<Stream>();
+        body.CanRead.Returns(true);
+        body.ReadAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => ValueTask.FromException<int>(failure));
+        request.Body.Returns(body);
+
+        var act = () => changePassword
+            ? _function.ChangePassword(request, CancellationToken.None)
+            : _function.Login(request, CancellationToken.None);
+
+        var thrown = await act.Should().ThrowExactlyAsync<AggregateException>();
+        var inner = thrown.Which.InnerExceptions.Should().ContainSingle().Which;
+        if (cancelled)
+        {
+            inner.Should().BeOfType<TaskCanceledException>();
+        }
+        else
+        {
+            inner.Should().BeSameAs(failure);
+        }
+    }
+
+    [Fact]
     public async Task Login_ValidCredentials_Returns200WithUserAndSessionCookie()
     {
         var req = TestHttpRequestData.CreateRequest("POST", "http://localhost/api/auth/login", new { username = "Requester@example.com", password = "Ch@nageM3" });

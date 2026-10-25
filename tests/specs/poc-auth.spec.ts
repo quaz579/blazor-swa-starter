@@ -8,12 +8,12 @@ test.describe('POC auth', () => {
     await page.context().request.post('/api/auth/logout');
   });
 
-  test('health stays anonymous', { tag: '@smoke' }, async ({ request }) => {
+  test('health stays anonymous', async ({ request }) => {
     const health = await request.get('/api/health');
     expect(health.status()).toBe(200);
   });
 
-  test('anonymous requests are rejected and a wrong password is refused', { tag: '@smoke' }, async ({ request }) => {
+  test('anonymous requests are rejected and a wrong password is refused', async ({ request }) => {
     const anonymousMe = await request.get('/api/auth/me');
     expect(anonymousMe.status()).toBe(200);
     expect(await anonymousMe.json()).toEqual({ authenticated: false });
@@ -24,7 +24,7 @@ test.describe('POC auth', () => {
     expect(wrong.status()).toBe(401);
   });
 
-  test('fixture user logs in, passes the gate, and logs out', { tag: '@smoke' }, async ({ page }) => {
+  test('fixture user logs in, passes the gate, and logs out', async ({ page }) => {
     const user = await loginAs(page);
     const request = page.context().request;
 
@@ -44,7 +44,7 @@ test.describe('POC auth', () => {
     expect((await request.post('/api/auth/change-password', { data: {} })).status()).toBe(401);
   });
 
-  test('signed-out page loads produce zero console errors', { tag: '@smoke' }, async ({ page }) => {
+  test('signed-out page loads produce zero console errors', async ({ page }) => {
     const problems: string[] = [];
     page.on('console', (message) => message.type() === 'error' && problems.push(message.text()));
     page.on('pageerror', (error) => problems.push(String(error)));
@@ -57,7 +57,7 @@ test.describe('POC auth', () => {
     expect(problems).toEqual([]);
   });
 
-  test('a session created through the loginAs API helper shows the UI signed in after a reload', { tag: '@smoke' }, async ({ page }) => {
+  test('a session created through the loginAs API helper shows the UI signed in after a reload', async ({ page }) => {
     const user = await loginAs(page);
 
     await page.goto('/');
@@ -70,7 +70,7 @@ test.describe('POC auth', () => {
     await expect(page.getByTestId('nav-login')).toHaveCount(0);
   });
 
-  test('signing in through the login page shows the user in the nav', { tag: '@smoke' }, async ({ page }) => {
+  test('signing in through the login page shows the user in the nav', async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');
     await page.getByTestId('login-username').fill(user.username);
@@ -83,7 +83,98 @@ test.describe('POC auth', () => {
     await expect(page.getByTestId('nav-login')).toBeVisible();
   });
 
-  test('a wrong password on the login page shows an error and keeps the page usable', { tag: '@smoke' }, async ({ page }) => {
+  for (const invalid of [
+    { name: 'missing fields', body: {} },
+    { name: 'a null role', body: { username: 'fixture-user', roles: [null] } },
+    { name: 'a mixed null role', body: { username: 'fixture-user', roles: ['user', null] } },
+  ]) {
+    test(`an invalid successful login with ${invalid.name} stays signed out and shows an error`, async ({ page }) => {
+      await page.route('**/api/auth/login', (route) => route.fulfill({ json: invalid.body }));
+      await page.goto('/login');
+      await page.getByTestId('login-username').fill('fixture-user');
+      await page.getByTestId('login-password').fill('fixture-pass1');
+      await page.getByTestId('login-submit').click();
+
+      await expect(page.getByTestId('login-error')).toHaveText('Sign-in failed: the API returned an unexpected response.');
+      await expect(page.getByTestId('nav-login')).toBeVisible();
+      await expect(page.getByTestId('nav-user')).toHaveCount(0);
+      await expect(page.locator('#blazor-error-ui')).toBeHidden();
+    });
+  }
+
+  test('a delayed anonymous session probe cannot replace a successful sign-in', async ({ page }) => {
+    const user = pocUser();
+    let releaseProbe!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    await page.route('**/api/auth/me', async (route) => {
+      await gate;
+      await route.fulfill({ json: { authenticated: false } });
+    });
+    try {
+      await page.goto('/login');
+      await page.getByTestId('login-username').fill(user.username);
+      await page.getByTestId('login-password').fill(user.password);
+      await page.getByTestId('login-submit').click();
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+
+      const probe = page.waitForResponse('**/api/auth/me');
+      releaseProbe();
+      await probe;
+
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+      await expect(page.getByTestId('nav-login')).toHaveCount(0);
+      await expect(page.locator('#blazor-error-ui')).toBeHidden();
+    } finally {
+      releaseProbe();
+    }
+  });
+
+  for (const failure of ['server', 'network']) {
+    test(`a ${failure} logout failure preserves the signed-in UI and offers retry`, async ({ page }) => {
+      const user = await loginAs(page);
+      await page.goto('/');
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+      await page.route('**/api/auth/logout', (route) => failure === 'server'
+        ? route.fulfill({ status: 500 })
+        : route.abort('connectionreset'));
+
+      await page.getByTestId('nav-logout').click();
+
+      await expect(page.getByTestId('nav-logout-error')).toContainText('Try again.');
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+      await expect(page.getByTestId('nav-logout')).toBeEnabled();
+      expect((await (await page.context().request.get('/api/auth/me')).json()).authenticated).toBe(true);
+      await expect(page.locator('#blazor-error-ui')).toBeHidden();
+
+      await page.unroute('**/api/auth/logout');
+      await page.getByTestId('nav-logout').click();
+
+      await expect(page.getByTestId('nav-login')).toBeVisible();
+      expect((await (await page.context().request.get('/api/auth/me')).json()).authenticated).toBe(false);
+    });
+  }
+
+  test('the password page waits for the session probe shared with navigation', async ({ page }) => {
+    const user = pocUser();
+    let releaseProbe!: () => void;
+    const probeGate = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    await page.route('**/api/auth/me', async (route) => {
+      await probeGate;
+      await route.fulfill({ json: { authenticated: true, username: user.username, roles: user.roles } });
+    });
+    try {
+      await page.goto('/change-password');
+      await expect(page.getByTestId('change-password-loading')).toBeVisible();
+      await expect(page.getByTestId('change-password-signin-required')).toHaveCount(0);
+      releaseProbe();
+      await expect(page.getByTestId('change-password-submit')).toBeVisible();
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+    } finally {
+      releaseProbe();
+    }
+  });
+
+  test('a wrong password on the login page shows an error and keeps the page usable', async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');
     await page.getByTestId('login-username').fill(user.username);

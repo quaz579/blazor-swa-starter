@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using App.Core.Models;
 
 namespace App.Web.Services;
 
-/// <summary>Thin typed client over the <c>/api/items</c> and <c>/api/health</c> endpoints.</summary>
 public sealed class ItemsApiClient
 {
     private readonly HttpClient _http;
@@ -13,38 +13,43 @@ public sealed class ItemsApiClient
         _http = http;
     }
 
-    public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var response = await _http.GetAsync("api/health", cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-            return false;
-        }
-    }
-
     public async Task<List<Item>> GetItemsAsync(CancellationToken cancellationToken = default)
     {
         using var response = await _http.GetAsync("api/items", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<List<Item>>(cancellationToken: cancellationToken) ?? [];
+        var items = await response.Content.ReadFromJsonAsync<List<Item?>>(cancellationToken: cancellationToken)
+            ?? throw new ApiException((int)response.StatusCode, "The API returned a null item list.");
+        return items.ConvertAll(item => ValidateItem(item, (int)response.StatusCode,
+            "The API returned an item list containing a null item."));
     }
 
     public async Task<Item> CreateItemAsync(CreateItemRequest request, CancellationToken cancellationToken = default)
     {
         using var response = await _http.PostAsJsonAsync("api/items", request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<Item>(cancellationToken: cancellationToken)
-            ?? throw new ApiException((int)response.StatusCode, "The API returned an empty body for a created item.");
+        var item = await response.Content.ReadFromJsonAsync<Item>(cancellationToken: cancellationToken);
+        return ValidateItem(item, (int)response.StatusCode, "The API returned an empty body for a created item.");
     }
 
     public async Task DeleteItemAsync(string id, CancellationToken cancellationToken = default)
     {
         using var response = await _http.DeleteAsync($"api/items/{id}", cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    private static Item ValidateItem(Item? item, int statusCode, string nullMessage)
+    {
+        if (item is null)
+        {
+            throw new ApiException(statusCode, nullMessage);
+        }
+
+        if (item.Id is null || item.Name is null)
+        {
+            throw new ApiException(statusCode, "The API returned an item with a null id or name.");
+        }
+
+        return item;
     }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -63,9 +68,8 @@ public sealed class ItemsApiClient
                 message = problem.Error;
             }
         }
-        catch
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            // Body wasn't JSON shaped like {"error": "..."}; fall back to the generic message above.
         }
 
         throw new ApiException((int)response.StatusCode, message);

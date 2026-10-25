@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using App.Api.PocAuth;
 using App.Core.Models;
 using App.Core.Storage;
@@ -36,7 +37,6 @@ public sealed class ItemsFunction
         return await _auth.RequireSessionAsync(req, cancellationToken: cancellationToken) is null;
     }
 
-    /// <summary>GET /api/items — newest first.</summary>
     [Function("GetItems")]
     public async Task<HttpResponseData> GetItems(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "items")] HttpRequestData req,
@@ -71,7 +71,6 @@ public sealed class ItemsFunction
         }
     }
 
-    /// <summary>GET /api/items/{id}</summary>
     [Function("GetItem")]
     public async Task<HttpResponseData> GetItem(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "items/{id}")] HttpRequestData req,
@@ -101,7 +100,6 @@ public sealed class ItemsFunction
         return response;
     }
 
-    /// <summary>POST /api/items</summary>
     [Function("CreateItem")]
     public async Task<HttpResponseData> CreateItem(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "items")] HttpRequestData req,
@@ -117,7 +115,7 @@ public sealed class ItemsFunction
         {
             request = await req.ReadFromJsonAsync<CreateItemRequest>(cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is JsonException or AggregateException { InnerException: JsonException, InnerExceptions.Count: 1 })
         {
             _logger.LogWarning(ex, "Rejected malformed create-item body");
             request = null;
@@ -148,7 +146,6 @@ public sealed class ItemsFunction
         return response;
     }
 
-    /// <summary>DELETE /api/items/{id}</summary>
     [Function("DeleteItem")]
     public async Task<HttpResponseData> DeleteItem(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "items/{id}")] HttpRequestData req,
@@ -182,12 +179,6 @@ public sealed class ItemsFunction
         return req.CreateResponse(HttpStatusCode.NoContent);
     }
 
-    /// <summary>
-    /// The store rejects keys containing '/', '\', or '..' as a path-traversal guard.
-    /// Surface that as a clean 400 instead of the ArgumentException reaching the host as a 500,
-    /// and never echo <see cref="ArgumentException.Message"/> — its "(Parameter 'key')" suffix
-    /// names an internal argument the public route calls "id".
-    /// </summary>
     private async Task<HttpResponseData> InvalidIdResponse(HttpRequestData req, string id, CancellationToken cancellationToken)
     {
         _logger.LogWarning("Rejected malformed item id {Id}", id);

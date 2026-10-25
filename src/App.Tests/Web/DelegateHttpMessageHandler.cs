@@ -9,6 +9,20 @@ namespace App.Tests.Web;
 internal sealed class DelegateHttpMessageHandler(
     Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler) : HttpMessageHandler
 {
+    public static HttpClient CreateClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle) =>
+        new(new DelegateHttpMessageHandler(handle)) { BaseAddress = new Uri("https://api.test/") };
+
+    public static HttpClient CreateRecordingClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
+    {
+        var seen = new List<string>();
+        requests = seen;
+        return CreateClient((req, _) =>
+        {
+            seen.Add($"{req.Method} {req.RequestUri!.AbsolutePath}");
+            return handle(req);
+        });
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         handler(request, cancellationToken);
 }

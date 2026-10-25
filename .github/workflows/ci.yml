@@ -1,9 +1,5 @@
 name: CI
 
-# workflow_dispatch is mandatory: the very first push to a freshly-cloned repo
-# happens before `terraform apply` has created AZURE_STATIC_WEB_APPS_API_TOKEN,
-# so that first run is red by construction and needs a manual re-run once the
-# secret exists.
 on:
   push:
     branches: [main]
@@ -174,9 +170,6 @@ jobs:
           cache-dependency-path: tests/package-lock.json
 
       - name: Install Azure Functions Core Tools and SWA CLI
-        # azurite pinned here (matching scripts/start-e2e.sh's fallback version)
-        # so start-e2e.sh finds it on PATH instead of cold-downloading via npx,
-        # which was blowing past the readiness window on a cold runner.
         run: npm install -g azure-functions-core-tools@4.16.0 @azure/static-web-apps-cli@2.1.0 azurite@3.37.0
 
       - name: Install Playwright test dependencies
@@ -187,21 +180,28 @@ jobs:
         working-directory: tests
         run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps ' || '' }}chromium
 
-      # start-e2e.sh gives `func start` and `dotnet run` a bounded readiness
-      # window, and both build before they listen. This runner never built, so
-      # building up front keeps those in-script builds incremental.
       - name: Build solution
         run: dotnet build BlazorSwaStarter.sln -c Release
 
       - name: Start E2E environment
         run: ./scripts/start-e2e.sh
 
+      - name: Run .NET tests with Azurite and require zero skips
+        run: |
+          dotnet test BlazorSwaStarter.sln -c Release --no-build --logger "trx;LogFileName=azurite-results.trx" --results-directory "$RUNNER_TEMP/azurite-tests"
+          python3 - "$RUNNER_TEMP/azurite-tests/azurite-results.trx" <<'PYTHON'
+          import sys
+          import xml.etree.ElementTree as ET
+          counters = ET.parse(sys.argv[1]).find('.//{*}Counters')
+          if counters is None or int(counters.attrib['notExecuted']) != 0:
+              raise SystemExit('Azurite-backed .NET tests must execute without skips')
+          print('Azurite-backed .NET test counters:', counters.attrib)
+          PYTHON
+
       - name: Run Playwright suite
         working-directory: tests
         env:
           CI: "true"
-        # playwright.config.ts derives the base URL from scripts/ports.env
-        # (tests/helpers/ports.ts) — no port is hardcoded here.
         run: npm test
 
       - name: Stop E2E environment
@@ -338,8 +338,6 @@ jobs:
           app_location: src/App.Web
           api_location: src/App.Api
           output_location: wwwroot
-          # Oryx builds net10.0 server-side for both the frontend and the
-          # managed-functions API — do not set skip_app_build/skip_api_build.
 
       - name: Check whether the pull request closed during the run
         id: pr-state
@@ -350,8 +348,6 @@ jobs:
           state="$(gh pr view ${{ github.event.pull_request.number }} --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
           echo "state=$state" >> "$GITHUB_OUTPUT"
 
-      # pr-cleanup.yml only fires once, at close. A run still deploying (or re-run)
-      # after that would otherwise recreate the preview environment and leak a slot.
       - name: Close the preview environment of an already-closed pull request
         if: github.event_name == 'pull_request' && steps.pr-state.outputs.state != 'OPEN'
         uses: Azure/static-web-apps-deploy@v1
@@ -414,15 +410,9 @@ jobs:
           echo "Preview never responded at $url" >&2
           exit 1
 
-      # Preview environments inherit production app settings and therefore
-      # production storage — never run a write path against one. Only the
-      # @smoke subset runs here: read-only, except poc-auth.spec.ts, which is
-      # skipped unless POC auth is enabled and then signs in as the fixture
-      # user only, writing nothing but that user's session row and logging
-      # out after every test.
       - name: Run smoke tests against preview
         working-directory: tests
         env:
           CI: "true"
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
-        run: npx playwright test --grep @smoke
+        run: npx playwright test specs/smoke.spec.ts --grep @smoke

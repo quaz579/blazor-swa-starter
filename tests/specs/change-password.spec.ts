@@ -19,7 +19,7 @@ async function expectNoErrorOverlay(page: Page) {
   await expect(page.locator('#blazor-error-ui')).toBeHidden();
 }
 
-async function changePassword(request: APIRequestContext, currentPassword: string, newPassword: string) {
+function changePassword(request: APIRequestContext, currentPassword: string, newPassword: string) {
   return request.post('/api/auth/change-password', { data: { currentPassword, newPassword } });
 }
 
@@ -30,20 +30,38 @@ async function fillAndSubmit(page: Page, current: string, next: string, confirm 
   await page.getByTestId('change-password-submit').click();
 }
 
+async function restorePassword(request: APIRequestContext, username: string, original: string, candidates: string[]) {
+  for (const password of [original, ...candidates]) {
+    const login = await request.post('/api/auth/login', { data: { username, password } });
+    if (login.status() !== 200) {
+      continue;
+    }
+    if (password !== original) {
+      expect((await changePassword(request, password, original)).status()).toBe(204);
+    }
+    expect((await request.post('/api/auth/login', { data: { username, password: original } })).status()).toBe(200);
+    return;
+  }
+  throw new Error(`Could not restore the local fixture password for ${username}`);
+}
+
 test.describe('POC auth change password', () => {
   test.skip(!pocAuthEnabled(), 'POC auth is not enabled (PocAuth:Enabled is false in appsettings.json)');
+
+  test.beforeAll(async ({ baseURL }) => {
+    if (!baseURL || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(baseURL).hostname)) {
+      throw new Error('Password-changing tests and fixture recovery require the local emulator');
+    }
+  });
 
   test.afterEach(async ({ page }) => {
     const user = pocUser();
     const request = page.context().request;
-    const login = await request.post('/api/auth/login', { data: { username: user.username, password: NEW_PASSWORD } });
-    if (login.status() === 200) {
-      await changePassword(request, NEW_PASSWORD, user.password);
-    }
+    await restorePassword(request, user.username, user.password, [NEW_PASSWORD]);
     await request.post('/api/auth/logout');
   });
 
-  test('anonymous change-password is rejected with 401', { tag: '@smoke' }, async ({ request }) => {
+  test('anonymous change-password is rejected with 401', async ({ request }) => {
     const response = await changePassword(request, 'anything-1', NEW_PASSWORD);
     expect(response.status()).toBe(401);
   });
@@ -107,26 +125,26 @@ test.describe('POC auth change password', () => {
     const user = await loginAs(page);
     const request = page.context().request;
 
-    const responses = await Promise.all(
-      Array.from({ length: 8 }, (_, i) =>
-        request.post('/api/auth/change-password', { data: { currentPassword: user.password, newPassword: `Concurrent-pass-${i}` } })),
-    );
+    const candidates = Array.from({ length: 8 }, (_, i) => `Concurrent-pass-${i}`);
+    try {
+      const responses = await Promise.all(
+        candidates.map((_, i) =>
+          request.post('/api/auth/change-password', { data: { currentPassword: user.password, newPassword: candidates[i] } })),
+      );
 
-    const statuses = responses.map((r) => r.status());
-    expect(statuses.filter((s) => s === 204)).toHaveLength(1);
-    for (const response of responses.filter((r) => r.status() !== 204)) {
-      expect([400, 409]).toContain(response.status());
-      const error = (await response.json()).error;
-      expect(typeof error).toBe('string');
-      if (response.status() === 409) {
-        expect(error).toContain('Enter the new current password and try again');
+      const statuses = responses.map((r) => r.status());
+      expect(statuses.filter((s) => s === 204)).toHaveLength(1);
+      for (const response of responses.filter((r) => r.status() !== 204)) {
+        expect([400, 409]).toContain(response.status());
+        const error = (await response.json()).error;
+        expect(typeof error).toBe('string');
+        if (response.status() === 409) {
+          expect(error).toContain('Enter the new current password and try again');
+        }
       }
+    } finally {
+      await restorePassword(request, user.username, user.password, candidates);
     }
-
-    const winner = statuses.indexOf(204);
-    const login = await request.post('/api/auth/login', { data: { username: user.username, password: `Concurrent-pass-${winner}` } });
-    expect(login.status()).toBe(200);
-    expect((await changePassword(request, `Concurrent-pass-${winner}`, user.password)).status()).toBe(204);
   });
 
   test('a partial revocation failure shows a warning and a 409 shows the retry guidance', async ({ page }) => {
@@ -160,6 +178,23 @@ test.describe('POC auth change password', () => {
     await expectNoErrorOverlay(page);
     expect(problems).toEqual([]);
   });
+
+  for (const kind of ['missing', 'unreadable']) {
+    test(`a ${kind} password-change warning reports unconfirmed revocation`, async ({ page }) => {
+      const user = await loginAs(page);
+      await page.goto('/change-password');
+      await page.route('**/api/auth/change-password', (route) => kind === 'missing'
+        ? route.fulfill({ json: {} })
+        : route.fulfill({ status: 200, contentType: 'text/html', body: '<html>unreadable response' }));
+
+      await fillAndSubmit(page, user.password, NEW_PASSWORD);
+
+      await expect(page.getByTestId('change-password-warning')).toHaveText('Password changed, but sign-out of other devices could not be confirmed.');
+      await expect(page.getByTestId('change-password-success')).toHaveCount(0);
+      await expect(page.getByTestId('nav-user')).toHaveText(user.username);
+      await expectNoErrorOverlay(page);
+    });
+  }
 
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('400'));

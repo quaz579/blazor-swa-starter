@@ -86,3 +86,13 @@ tests/.test-state.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+.desloppify/state-*.json*
+.desloppify/config.json.bak
+.desloppify/plan.json*
+.desloppify/query.json
+.desloppify/review_packet*
+.desloppify/subagents/
+.desloppify/progression.jsonl*
+.desloppify/scorecard*
+/scorecard.png

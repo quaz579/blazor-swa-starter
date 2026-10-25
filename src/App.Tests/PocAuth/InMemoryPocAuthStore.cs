@@ -43,7 +43,7 @@ internal sealed class InMemoryPocAuthStore : IPocAuthStore
         return Task.CompletedTask;
     }
 
-    public Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string passwordHash, string salt, int iterations, CancellationToken cancellationToken = default)
+    public Task<PasswordUpdateResult> UpdatePasswordAsync(PocUserEntity verifiedUser, string salt, string passwordHash, int iterations, CancellationToken cancellationToken = default)
     {
         if (!Users.TryGetValue(verifiedUser.RowKey, out var user))
         {

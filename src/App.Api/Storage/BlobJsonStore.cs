@@ -1,5 +1,6 @@
 using System.Text.Json;
 using App.Core.Storage;
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
@@ -24,9 +25,13 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
     private readonly ILogger<BlobJsonStore<T>> _logger;
 
     public BlobJsonStore(string connectionString, BlobJsonStoreOptions<T> options, ILogger<BlobJsonStore<T>> logger)
+        : this(new BlobServiceClient(connectionString).GetBlobContainerClient(ContainerName), options, logger)
     {
-        var blobServiceClient = new BlobServiceClient(connectionString);
-        _containerClient = blobServiceClient.GetBlobContainerClient(ContainerName);
+    }
+
+    internal BlobJsonStore(BlobContainerClient containerClient, BlobJsonStoreOptions<T> options, ILogger<BlobJsonStore<T>> logger)
+    {
+        _containerClient = containerClient;
         _prefix = options.Prefix;
         _logger = logger;
     }
@@ -35,13 +40,15 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
     {
         var blobClient = _containerClient.GetBlobClient(BlobPathFor(key));
 
-        if (!await blobClient.ExistsAsync(cancellationToken))
+        try
+        {
+            var download = await blobClient.DownloadContentAsync(cancellationToken);
+            return JsonSerializer.Deserialize<T>(download.Value.Content.ToString(), SerializerOptions);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404 && ex.ErrorCode is "BlobNotFound" or "ContainerNotFound")
         {
             return null;
         }
-
-        var download = await blobClient.DownloadContentAsync(cancellationToken);
-        return JsonSerializer.Deserialize<T>(download.Value.Content.ToString(), SerializerOptions);
     }
 
     public async Task PutAsync(string key, T value, CancellationToken cancellationToken = default)

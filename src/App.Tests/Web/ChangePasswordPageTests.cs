@@ -15,13 +15,7 @@ public sealed class ChangePasswordPageTests : TestContext
 
     private PocAuthState Register(Func<HttpRequestMessage, HttpResponseMessage> handle, out List<string> requests)
     {
-        var seen = new List<string>();
-        requests = seen;
-        var http = new HttpClient(new DelegateHttpMessageHandler((req, _) =>
-        {
-            seen.Add($"{req.Method} {req.RequestUri!.AbsolutePath}");
-            return Task.FromResult(handle(req));
-        })) { BaseAddress = new Uri("https://api.test/") };
+        var http = DelegateHttpMessageHandler.CreateRecordingClient(req => Task.FromResult(handle(req)), out requests);
         var state = new PocAuthState(http, true);
         Services.AddSingleton(state);
         return state;

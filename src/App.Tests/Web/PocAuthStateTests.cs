@@ -10,18 +10,72 @@ public sealed class PocAuthStateTests : TestContext
 {
     private PocAuthState Create(bool enabled, Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
     {
-        var seen = new List<string>();
-        requests = seen;
-        var http = new HttpClient(new DelegateHttpMessageHandler((req, _) =>
-        {
-            seen.Add($"{req.Method} {req.RequestUri!.AbsolutePath}");
-            return handle(req);
-        })) { BaseAddress = new Uri("https://api.test/") };
+        var http = DelegateHttpMessageHandler.CreateRecordingClient(handle, out requests);
         return new PocAuthState(http, enabled);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+
+    [Theory]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[null]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\"admin\",null]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\" \"]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":null}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"admin\"}")]
+    [InlineData("{\"authenticated\":true,\"username\":\"\",\"roles\":[]}")]
+    [InlineData("{\"authenticated\":true,\"username\":\" \",\"roles\":[]}")]
+    public async Task InitializeAsync_IncompleteIdentity_DoesNotPublishAUser(string body)
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
+
+        await state.InitializeAsync();
+
+        state.User.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe()
+    {
+        var response = new TaskCompletionSource<HttpResponseMessage>();
+        var state = Create(true, _ => response.Task, out var requests);
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        var first = state.InitializeAsync();
+        var second = state.InitializeAsync();
+
+        second.IsCompleted.Should().BeFalse();
+        requests.Should().Equal("GET /api/auth/me");
+        response.SetResult(Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}"));
+        await Task.WhenAll(first, second);
+
+        state.User!.Username.Should().Be("admin");
+        notifications.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"username\":null,\"roles\":[]}")]
+    [InlineData("{\"username\":\" \",\"roles\":[]}")]
+    [InlineData("{\"username\":\"admin\"}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":null}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[null]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\"admin\",null]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\" \"]}")]
+    [InlineData("{\"username\":\"admin\",\"roles\":[\"admin\",\"\"]}")]
+    public async Task LoginAsync_IncompleteIdentity_ReturnsErrorWithoutSigningIn(string body)
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        var error = await state.LoginAsync("admin", "fixture-pass1");
+
+        error.Should().Be("Sign-in failed: the API returned an unexpected response.");
+        state.User.Should().BeNull();
+        notifications.Should().Be(0);
+    }
 
     [Fact]
     public async Task Initialize_WhenDisabled_NeverCallsTheApi()
@@ -103,13 +157,17 @@ public sealed class PocAuthStateTests : TestContext
     }
 
     [Fact]
-    public async Task Logout_WhenTheRequestTimesOut_StillSignsOutLocally()
+    public async Task LogoutAsync_RequestTimesOut_PreservesTheSignedInIdentity()
     {
-        var state = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
+        var state = Create(true, request => request.RequestUri!.AbsolutePath.EndsWith("login")
+            ? Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"admin\",\"roles\":[\"admin\"]}"))
+            : throw new TaskCanceledException("timeout"), out _);
+        await state.LoginAsync("admin", "fixture-pass1");
 
-        await state.LogoutAsync();
+        var error = await state.LogoutAsync();
 
-        state.IsSignedIn.Should().BeFalse();
+        error.Should().Be("Could not reach the API. Try again.");
+        state.User!.Username.Should().Be("admin");
     }
 
     [Fact]
@@ -194,12 +252,20 @@ public sealed class PocAuthStateTests : TestContext
         result.Warning.Should().Be("Password changed, but other devices could not be signed out.");
     }
 
-    [Fact]
-    public async Task ChangePassword_OkWithUnreadableBody_StillSucceedsWithoutAWarning()
+    [Theory]
+    [InlineData("<html>")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    [InlineData("{\"warning\": null}")]
+    [InlineData("{\"warning\": \" \"}")]
+    public async Task ChangePasswordAsync_UnreadableOrMissingWarning_ReturnsUnconfirmedRevocationWarning(string body)
     {
-        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, "<html>")), out _);
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.OK, body)), out _);
 
-        (await state.ChangePasswordAsync("a", "b")).Should().Be(new PasswordChangeResult(null, null));
+        var result = await state.ChangePasswordAsync("old-pass-1", "new-pass-2");
+
+        result.Error.Should().BeNull();
+        result.Warning.Should().Be("Password changed, but sign-out of other devices could not be confirmed.");
     }
 
     [Fact]

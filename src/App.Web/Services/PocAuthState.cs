@@ -6,7 +6,9 @@ namespace App.Web.Services;
 
 public sealed record PocUser(string Username, string[] Roles);
 
-internal sealed record MeResponse(bool Authenticated, string? Username, string[]? Roles);
+internal sealed record LoginResponse(string? Username, string?[]? Roles);
+
+internal sealed record MeResponse(bool Authenticated, string? Username, string?[]? Roles);
 
 internal sealed record ErrorResponse(string? Error);
 
@@ -17,11 +19,13 @@ public sealed record PasswordChangeResult(string? Error, string? Warning);
 public sealed class PocAuthState
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+    private const string UnconfirmedRevocationWarning = "Password changed, but sign-out of other devices could not be confirmed.";
     private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
-    private static readonly TimeSpan ChangePasswordTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
 
     private readonly HttpClient _http;
-    private bool _initialized;
+    private Task? _initialization;
+    private int _revision;
 
     public PocAuthState(HttpClient http, bool enabled)
     {
@@ -37,55 +41,67 @@ public sealed class PocAuthState
 
     public bool IsSignedIn => User is not null;
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        if (!Enabled || _initialized)
-        {
-            return;
-        }
+    public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+        Enabled ? _initialization ??= InitializeCoreAsync(cancellationToken) : Task.CompletedTask;
 
-        _initialized = true;
+    private async Task InitializeCoreAsync(CancellationToken cancellationToken)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(ProbeTimeout);
-        User = await FetchMeAsync(timeout.Token);
-        Changed?.Invoke();
+        var revision = _revision;
+        var user = await FetchMeAsync(timeout.Token);
+        if (revision == _revision)
+        {
+            SetUser(user);
+        }
     }
 
     public async Task<string?> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
     {
-        using var response = await _http.PostAsJsonAsync("api/auth/login", new { username, password }, cancellationToken);
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            return "Invalid username or password.";
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return $"Sign-in failed with status {(int)response.StatusCode}.";
-        }
-
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
-            User = await response.Content.ReadFromJsonAsync<PocUser>(cancellationToken: cancellationToken);
-        }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException)
-        {
-            return "Sign-in failed: the API returned an unexpected response.";
-        }
+            using var response = await _http.PostAsJsonAsync("api/auth/login", new { username, password }, timeout.Token);
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                return "Invalid username or password.";
+            }
 
-        if (User is null)
-        {
-            return "Sign-in failed: the API returned an unexpected response.";
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Sign-in failed with status {(int)response.StatusCode}.";
+            }
 
-        Changed?.Invoke();
-        return null;
+            LoginResponse? identity;
+            try
+            {
+                identity = await response.Content.ReadFromJsonAsync<LoginResponse>(cancellationToken: timeout.Token);
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException)
+            {
+                return "Sign-in failed: the API returned an unexpected response.";
+            }
+
+            var user = CreateValidatedUser(identity?.Username, identity?.Roles);
+            if (user is null)
+            {
+                return "Sign-in failed: the API returned an unexpected response.";
+            }
+
+            SetUser(user);
+            return null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
+        {
+            return "Could not reach the API. Try again.";
+        }
     }
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ChangePasswordTimeout);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
             using var response = await _http.PostAsJsonAsync("api/auth/change-password", new { currentPassword, newPassword }, timeout.Token);
@@ -96,8 +112,7 @@ public sealed class PocAuthState
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                User = null;
-                Changed?.Invoke();
+                SetUser(null);
                 return new("Your session has expired. Sign in again.", null);
             }
 
@@ -113,23 +128,37 @@ public sealed class PocAuthState
 
             return new($"Could not change the password (status {(int)response.StatusCode}). Try again.", null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
         {
             return new("Could not reach the API. Try again.", null);
         }
     }
 
-    public async Task LogoutAsync(CancellationToken cancellationToken = default)
+    public async Task<string?> LogoutAsync(CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(CommandTimeout);
         try
         {
-            using var response = await _http.PostAsync("api/auth/logout", content: null, cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-        }
+            using var response = await _http.PostAsync("api/auth/logout", content: null, timeout.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Sign-out failed with status {(int)response.StatusCode}. Try again.";
+            }
 
-        User = null;
+            SetUser(null);
+            return null;
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
+        {
+            return "Could not reach the API. Try again.";
+        }
+    }
+
+    private void SetUser(PocUser? user)
+    {
+        _revision++;
+        User = user;
         Changed?.Invoke();
     }
 
@@ -143,11 +172,11 @@ public sealed class PocAuthState
         try
         {
             var body = await response.Content.ReadFromJsonAsync<WarningResponse>(cancellationToken: cancellationToken);
-            return string.IsNullOrWhiteSpace(body?.Warning) ? null : body.Warning;
+            return string.IsNullOrWhiteSpace(body?.Warning) ? UnconfirmedRevocationWarning : body.Warning;
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            return null;
+            return UnconfirmedRevocationWarning;
         }
     }
 
@@ -164,6 +193,27 @@ public sealed class PocAuthState
         }
     }
 
+    private static PocUser? CreateValidatedUser(string? username, string?[]? roles)
+    {
+        if (string.IsNullOrWhiteSpace(username) || roles is null)
+        {
+            return null;
+        }
+
+        var validatedRoles = new string[roles.Length];
+        for (var index = 0; index < roles.Length; index++)
+        {
+            var role = roles[index];
+            if (string.IsNullOrWhiteSpace(role))
+            {
+                return null;
+            }
+            validatedRoles[index] = role;
+        }
+
+        return new PocUser(username, validatedRoles);
+    }
+
     private async Task<PocUser?> FetchMeAsync(CancellationToken cancellationToken)
     {
         try
@@ -175,8 +225,8 @@ public sealed class PocAuthState
             }
 
             var me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken: cancellationToken);
-            return me is { Authenticated: true, Username: not null }
-                ? new PocUser(me.Username, me.Roles ?? [])
+            return me is { Authenticated: true }
+                ? CreateValidatedUser(me.Username, me.Roles)
                 : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)

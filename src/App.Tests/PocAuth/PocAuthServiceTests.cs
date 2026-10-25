@@ -1,5 +1,8 @@
 using App.Api.PocAuth;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 
 namespace App.Tests.PocAuth;
 
@@ -15,6 +18,48 @@ public sealed class PocAuthServiceTests
     }
 
     private PocAuthService CreateService(params PocSeedUser[] seed) => new(_store, _time, seed);
+
+    [Fact]
+    public async Task AddPocAuth_RegisteredLogger_ReceivesSessionCleanupFailures()
+    {
+        var seed = SeedUser("admin", "Ch@nageM3", "admin");
+        await _store.AddUserIfMissingAsync(new PocUserEntity
+        {
+            RowKey = "admin", Username = "admin", Roles = "admin",
+            Salt = seed.Salt, PasswordHash = seed.PasswordHash, Iterations = seed.Iterations,
+        });
+        var logger = Substitute.For<ILogger<PocAuthService>>();
+        using var services = new ServiceCollection()
+            .AddPocAuth()
+            .AddSingleton<IPocAuthStore>(_store)
+            .AddSingleton(logger)
+            .BuildServiceProvider();
+        _store.ThrowOnSessionDelete = true;
+
+        var outcome = await services.GetRequiredService<PocAuthService>()
+            .ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), null, "Ch@nageM3", "Another-pass-9");
+
+        outcome.Result.Should().Be(ChangePasswordResult.Changed);
+        logger.ReceivedCalls().Count(call => call.GetMethodInfo().Name == "Log").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_SessionCleanupFails_LogsTheExceptionWithoutCredentials()
+    {
+        var logger = Substitute.For<ILogger<PocAuthService>>();
+        var service = new PocAuthService(_store, _time, [SeedUser("admin", "Ch@nageM3", "admin")], logger);
+        _store.ThrowOnSessionDelete = true;
+
+        var result = await service.ChangePasswordAsync(new PocPrincipal("admin", ["admin"]), "private-session-token", "Ch@nageM3", "Another-pass-9");
+
+        result.Result.Should().Be(ChangePasswordResult.Changed);
+        result.Message.Should().Be("Password changed, but other devices could not be signed out.");
+        var call = logger.ReceivedCalls().Single(c => c.GetMethodInfo().Name == "Log").GetArguments();
+        call[0].Should().Be(LogLevel.Warning);
+        call[3].Should().BeOfType<InvalidOperationException>().Which.Message.Should().Be("session store down");
+        call[2]!.ToString().Should().Contain("admin").And.NotContain("Ch@nageM3").And.NotContain("Another-pass-9").And.NotContain("private-session-token");
+        (await service.AuthenticateAsync("admin", "Another-pass-9")).Should().NotBeNull();
+    }
 
     [Fact]
     public async Task Seed_RunsIdempotently_AndNeverOverwritesExistingUsers()
@@ -247,9 +292,9 @@ public sealed class PocAuthServiceTests
         var service = CreateService(SeedUser("admin", "Ch@nageM3", "admin"));
         await service.SeedAsync();
         var stale = (await _store.GetUserAsync("admin"))!;
-        await _store.UpdatePasswordAsync(stale, "winner-hash", "winner-salt", 1);
+        await _store.UpdatePasswordAsync(stale, salt: "winner-salt", passwordHash: "winner-hash", 1);
 
-        var result = await _store.UpdatePasswordAsync(stale, "loser-hash", "loser-salt", 1);
+        var result = await _store.UpdatePasswordAsync(stale, salt: "loser-salt", passwordHash: "loser-hash", 1);
 
         result.Should().Be(PasswordUpdateResult.Conflict);
         _store.Users["admin"].PasswordHash.Should().Be("winner-hash");
