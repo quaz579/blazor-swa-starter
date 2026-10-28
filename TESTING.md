@@ -58,25 +58,25 @@ on gated routes (see `DEPLOY.md`'s "Write auth"; the starter's Items sample uses
 and the SWA CLI emulator enforces that locally too. Specs that exercise those verbs (the Items
 sample's `items-create.spec.ts` and `items-delete.spec.ts`, if present) call `loginAsAuthenticatedUser` from `tests/helpers/auth.ts` in a `beforeEach`, which sets the
 emulator's `StaticWebAppsAuthCookie` directly — the same base64-JSON principal the emulator's
-own `/.auth/login/<provider>` mock form would set, without driving that page. Only
-`smoke.spec.ts` carries `@smoke`; its tests stay unauthenticated and read-only. CI selects
-that file explicitly for deployed previews.
+own `/.auth/login/<provider>` mock form would set, without driving that page. Tests tagged
+`@smoke` stay unauthenticated and read-only, including anonymous requests that are rejected
+without mutation. CI selects only `smoke.spec.ts` explicitly for deployed previews.
 
 With the opt-in POC auth scaffold enabled (see `AGENTS.md`), `tests/specs/poc-auth.spec.ts`
 logs in as the fixture user through `loginAs`, exercises session writes, and checks failed
 sign-out and delayed session probes. `change-password.spec.ts` changes local fixture passwords
 and restores them in cleanup, including after failed concurrency assertions; it refuses a
-non-local target. These auth specs are excluded from smoke selection. Tests tagged `@prod`
+non-local target. Its anonymous rejection test runs separately without session or password
+cleanup and carries `@smoke`, as does the disabled-auth check. Tests tagged `@prod`
 are safe against a live product, may create sessions, and never run against a preview.
 `loginAsAuthenticatedUser`
 also signs in so the write specs keep working. With auth disabled,
 `poc-auth-disabled.spec.ts` asserts the endpoints are inert and the auth specs skip.
 
-Run only the read-only smoke subset (the only tests safe against a deployed preview, and also
-safe against a live URL — see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
+Run the preview smoke subset (see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 
 ```sh
-cd tests && npx playwright test --grep @smoke
+cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke
 ```
 
 First run on a machine needs the browser once: `cd tests && npx playwright install --with-deps chromium`.
