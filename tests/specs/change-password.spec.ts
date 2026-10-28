@@ -48,6 +48,15 @@ async function restorePassword(request: APIRequestContext, username: string, ori
 test.describe('POC auth change password', () => {
   test.skip(!pocAuthEnabled(), 'POC auth is not enabled (PocAuth:Enabled is false in appsettings.json)');
 
+  test('anonymous change-password is rejected with 401', { tag: '@smoke' }, async ({ request }) => {
+    const response = await changePassword(request, 'anything-1', NEW_PASSWORD);
+    expect(response.status()).toBe(401);
+  });
+});
+
+test.describe('POC auth change password', () => {
+  test.skip(!pocAuthEnabled(), 'POC auth is not enabled (PocAuth:Enabled is false in appsettings.json)');
+
   test.beforeAll(async ({ baseURL }) => {
     if (!baseURL || !['localhost', '127.0.0.1', '[::1]'].includes(new URL(baseURL).hostname)) {
       throw new Error('Password-changing tests and fixture recovery require the local emulator');
@@ -59,11 +68,6 @@ test.describe('POC auth change password', () => {
     const request = page.context().request;
     await restorePassword(request, user.username, user.password, [NEW_PASSWORD]);
     await request.post('/api/auth/logout');
-  });
-
-  test('anonymous change-password is rejected with 401', async ({ request }) => {
-    const response = await changePassword(request, 'anything-1', NEW_PASSWORD);
-    expect(response.status()).toBe(401);
   });
 
   test('a signed-in user changes the password, signs out, and signs in with the new one', async ({ page }) => {
