@@ -36,10 +36,16 @@ jobs:
           cache-dependency-path: tests/package-lock.json
 
       - name: Install Azure Functions Core Tools
-        run: npm install -g azure-functions-core-tools@4.16.0
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/functions-tools" azure-functions-core-tools@4.16.0
+          echo "$RUNNER_TEMP/functions-tools/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Install Azurite
-        run: npm install -g azurite@^3.37.0
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/azurite-tools" azurite@^3.37.0
+          echo "$RUNNER_TEMP/azurite-tools/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Restore .NET dependencies
         run: dotnet restore BlazorSwaStarter.sln
