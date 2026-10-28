@@ -77,16 +77,17 @@ Every push to `main` and every pull request runs `.github/workflows/ci.yml`: `bu
 (restore/build/`dotnet test`) → `e2e` (`scripts/start-e2e.sh`, the full Playwright suite,
 `scripts/stop-e2e.sh`) → `deploy` (`Azure/static-web-apps-deploy@v1`, reading the
 `AZURE_STATIC_WEB_APPS_API_TOKEN` secret Terraform wrote) → `smoke-preview` on pull requests
-only, which waits for the preview URL to respond and then runs `npx playwright test --grep
-@smoke` against it. Each job depends on the previous one (`needs:`), so unit and E2E failures
+only, which waits for the preview URL to respond and then runs
+`cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke` against it.
+Each job depends on the previous one (`needs:`), so unit and E2E failures
 block a deploy.
 
 ### PR previews
 
 A pull request gets its own Static Web Apps preview slot, deployed by the same `deploy` job.
 **A preview environment inherits the production Static Web App's app settings — including the
-production storage connection string.** It is not an isolated sandbox; only the read-only
-`@smoke` spec (`tests/specs/smoke.spec.ts`) is safe to run against one, which is what
+production storage connection string.** It is not an isolated sandbox; only tests in
+`tests/specs/smoke.spec.ts` selected with `--grep @smoke` may run against one, which is what
 `smoke-preview` does. Closing the PR runs `.github/workflows/pr-cleanup.yml`, which tears the
 preview slot down.
 

@@ -76,7 +76,7 @@ roles may touch a subscription or a repo secret, not missing tools — both are 
 | `./scripts/start-e2e.sh` ... `(cd tests && npm test)` ... `./scripts/stop-e2e.sh` | Same stack, E2E app-settings, then the full Playwright suite |
 | `cd tests && npm ci` | Install Playwright/test dependencies |
 | `cd tests && npx playwright install --with-deps chromium` | Install the Chromium browser Playwright drives |
-| `cd tests && npx playwright test --grep @smoke` | Run only the read-only smoke subset |
+| `cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke` | Run only the read-only preview smoke subset |
 | `bash scripts/validate-environment.sh` | Preflight: tool versions, solution build, free ports, `swa-cli.config.json`/`ports.env` drift, Playwright browser cache |
 | `cd infrastructure/terraform && terraform init / validate / fmt -check -recursive / plan` | Read-only Terraform checks (see `DEPLOY.md` for `apply`) |
 | `scripts/generate-agent-views.sh` / `scripts/generate-agent-views.sh --check` | Regenerate `.claude/agents/*.md` from `agents/*.md`, or verify the generated view is up to date |
@@ -175,9 +175,11 @@ Three tiers, in order, each cheaper to run than the next:
    Azurite + Functions + Blazor + SWA-proxy stack, and it is what CI's `e2e` job runs.
 3. **The PR preview environment.** Every PR gets a live Static Web Apps preview slot deployed
    by CI. **A preview environment inherits the production Static Web App's app settings, and
-   therefore production storage** — it is not an isolated sandbox. Only the read-only `@smoke`
-   subset (`tests/specs/smoke.spec.ts`) may run against one; CI's `smoke-preview` job enforces
-   this automatically, and you must not run the full suite or any write path (`POST`/`DELETE`
+   therefore production storage** — it is not an isolated sandbox. Only tests in
+   `tests/specs/smoke.spec.ts` selected with `--grep @smoke` may run against a preview or live URL.
+   Other specs also carry `@smoke` for the factory's deployed-app check, so the tag alone does
+   not define preview eligibility. Run `cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke`;
+   CI's `smoke-preview` job enforces this selection automatically. You must not run the full suite or any write path (`POST`/`DELETE`
    against any write endpoint) against a preview or live URL by hand.
 
 ## Ports: single source of truth
