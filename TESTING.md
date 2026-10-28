@@ -66,12 +66,14 @@ With the opt-in POC auth scaffold enabled (see `AGENTS.md`), `tests/specs/poc-au
 logs in as the fixture user through `loginAs`, exercises session writes, and checks failed
 sign-out and delayed session probes. `change-password.spec.ts` changes local fixture passwords
 and restores them in cleanup, including after failed concurrency assertions; it refuses a
-non-local target. These auth specs are excluded from smoke selection. `loginAsAuthenticatedUser`
+non-local target. These auth specs are excluded from smoke selection. Tests tagged `@prod`
+are safe against a live product, may create sessions, and never run against a preview.
+`loginAsAuthenticatedUser`
 also signs in so the write specs keep working. With auth disabled,
 `poc-auth-disabled.spec.ts` asserts the endpoints are inert and the auth specs skip.
 
-Run only the read-only smoke subset (the only tests safe against a deployed preview or live
-URL — see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
+Run only the read-only smoke subset (the only tests safe against a deployed preview, and also
+safe against a live URL — see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 
 ```sh
 cd tests && npx playwright test --grep @smoke

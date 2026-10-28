@@ -8,12 +8,12 @@ test.describe('POC auth', () => {
     await page.context().request.post('/api/auth/logout');
   });
 
-  test('health stays anonymous', async ({ request }) => {
+  test('health stays anonymous', { tag: '@prod' }, async ({ request }) => {
     const health = await request.get('/api/health');
     expect(health.status()).toBe(200);
   });
 
-  test('anonymous requests are rejected and a wrong password is refused', async ({ request }) => {
+  test('anonymous requests are rejected and a wrong password is refused', { tag: '@prod' }, async ({ request }) => {
     const anonymousMe = await request.get('/api/auth/me');
     expect(anonymousMe.status()).toBe(200);
     expect(await anonymousMe.json()).toEqual({ authenticated: false });
@@ -24,7 +24,7 @@ test.describe('POC auth', () => {
     expect(wrong.status()).toBe(401);
   });
 
-  test('fixture user logs in, passes the gate, and logs out', async ({ page }) => {
+  test('fixture user logs in, passes the gate, and logs out', { tag: '@prod' }, async ({ page }) => {
     const user = await loginAs(page);
     const request = page.context().request;
 
@@ -44,7 +44,7 @@ test.describe('POC auth', () => {
     expect((await request.post('/api/auth/change-password', { data: {} })).status()).toBe(401);
   });
 
-  test('signed-out page loads produce zero console errors', async ({ page }) => {
+  test('signed-out page loads produce zero console errors', { tag: '@prod' }, async ({ page }) => {
     const problems: string[] = [];
     page.on('console', (message) => message.type() === 'error' && problems.push(message.text()));
     page.on('pageerror', (error) => problems.push(String(error)));
@@ -57,7 +57,7 @@ test.describe('POC auth', () => {
     expect(problems).toEqual([]);
   });
 
-  test('a session created through the loginAs API helper shows the UI signed in after a reload', async ({ page }) => {
+  test('a session created through the loginAs API helper shows the UI signed in after a reload', { tag: '@prod' }, async ({ page }) => {
     const user = await loginAs(page);
 
     await page.goto('/');
@@ -70,7 +70,7 @@ test.describe('POC auth', () => {
     await expect(page.getByTestId('nav-login')).toHaveCount(0);
   });
 
-  test('signing in through the login page shows the user in the nav', async ({ page }) => {
+  test('signing in through the login page shows the user in the nav', { tag: '@prod' }, async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');
     await page.getByTestId('login-username').fill(user.username);
@@ -174,7 +174,7 @@ test.describe('POC auth', () => {
     }
   });
 
-  test('a wrong password on the login page shows an error and keeps the page usable', async ({ page }) => {
+  test('a wrong password on the login page shows an error and keeps the page usable', { tag: '@prod' }, async ({ page }) => {
     const user = pocUser();
     await page.goto('/login');
     await page.getByTestId('login-username').fill(user.username);
