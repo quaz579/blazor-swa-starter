@@ -3,6 +3,7 @@ import { ports } from './helpers/ports';
 
 export default defineConfig({
   testDir: './specs',
+  globalTimeout: Number(process.env.PW_GLOBAL_TIMEOUT_MS ?? 0),
 
   fullyParallel: false,
   workers: 1,

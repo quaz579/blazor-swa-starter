@@ -203,8 +203,10 @@ jobs:
 
       - name: Run Playwright suite
         working-directory: tests
+        timeout-minutes: 14
         env:
           CI: "true"
+          PW_GLOBAL_TIMEOUT_MS: "720000"
         run: npm test
 
       - name: Stop E2E environment
@@ -285,8 +287,10 @@ jobs:
 
       - name: Run POC auth specs
         working-directory: tests
+        timeout-minutes: 14
         env:
           CI: "true"
+          PW_GLOBAL_TIMEOUT_MS: "720000"
         run: npx playwright test specs/poc-auth.spec.ts specs/change-password.spec.ts
 
       - name: Stop E2E environment
@@ -420,8 +424,10 @@ jobs:
 
       - name: Run smoke tests against preview
         working-directory: tests
+        timeout-minutes: 7
         env:
           CI: "true"
+          PW_GLOBAL_TIMEOUT_MS: "300000"
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
         run: npx playwright test specs/smoke.spec.ts --grep @smoke
 
