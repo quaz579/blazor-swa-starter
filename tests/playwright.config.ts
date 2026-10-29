@@ -26,7 +26,7 @@ export default defineConfig({
     // otherwise fall back to the local SWA CLI proxy, which is what routes
     // /api/* to the Functions host (the Blazor dev-server port does not).
     baseURL: process.env.BASE_URL ?? `http://localhost:${ports.SWA_PORT}`,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15_000,

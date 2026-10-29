@@ -216,7 +216,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
-          path: tests/playwright-report/
+          path: |
+            tests/playwright-report/
+            tests/test-results/
           retention-days: 7
 
   select-e2e-poc-auth:
@@ -422,3 +424,13 @@ jobs:
           CI: "true"
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
         run: npx playwright test specs/smoke.spec.ts --grep @smoke
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-smoke-preview
+          path: |
+            tests/playwright-report/
+            tests/test-results/
+          retention-days: 7
