@@ -3,6 +3,7 @@ import { ports } from './helpers/ports';
 
 export default defineConfig({
   testDir: './specs',
+  globalTimeout: Number(process.env.PW_GLOBAL_TIMEOUT_MS ?? 0),
 
   fullyParallel: false,
   workers: 1,
@@ -26,7 +27,7 @@ export default defineConfig({
     // otherwise fall back to the local SWA CLI proxy, which is what routes
     // /api/* to the Functions host (the Blazor dev-server port does not).
     baseURL: process.env.BASE_URL ?? `http://localhost:${ports.SWA_PORT}`,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15_000,
