@@ -212,7 +212,7 @@ jobs:
         run: ./scripts/stop-e2e.sh
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
@@ -294,7 +294,7 @@ jobs:
         run: ./scripts/stop-e2e.sh
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-poc-auth
@@ -426,7 +426,7 @@ jobs:
         run: npx playwright test specs/smoke.spec.ts --grep @smoke
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-smoke-preview
