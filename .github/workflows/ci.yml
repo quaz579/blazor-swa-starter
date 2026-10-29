@@ -203,10 +203,10 @@ jobs:
 
       - name: Run Playwright suite
         working-directory: tests
-        timeout-minutes: 14
+        timeout-minutes: 4
         env:
           CI: "true"
-          PW_GLOBAL_TIMEOUT_MS: "720000"
+          PW_GLOBAL_TIMEOUT_MS: "120000"
         run: npm test
 
       - name: Stop E2E environment
