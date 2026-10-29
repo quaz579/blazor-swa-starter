@@ -151,7 +151,7 @@ jobs:
     if: >-
       !cancelled() && (true) && needs.build-test.result == 'success' && (needs.select-e2e.result == 'success' || (needs.select-e2e.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
     runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-e2e.outputs.labels) || '["ubuntu-latest"]') }}
-    timeout-minutes: 20
+    timeout-minutes: 4
     permissions:
       contents: read
     steps:
