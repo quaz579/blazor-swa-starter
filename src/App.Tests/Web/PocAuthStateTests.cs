@@ -34,22 +34,34 @@ public sealed class PocAuthStateTests : TestContext
         state.User.Should().BeNull();
     }
 
-    [Fact]
-    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe(bool cancelBeforeAssertions)
     {
+        using var cancellation = new CancellationTokenSource();
+        var session = Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}");
         var response = new TaskCompletionSource<HttpResponseMessage>();
         var state = Create(true, _ => response.Task, out var requests);
         var notifications = 0;
         state.Changed += () => notifications++;
 
-        var first = state.InitializeAsync();
+        var first = state.InitializeAsync(cancellation.Token);
         var second = state.InitializeAsync();
-
-        second.IsCompleted.Should().BeFalse();
-        requests.Should().Equal("GET /api/auth/me");
-        response.SetResult(Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}"));
+        var secondWasCompleted = second.IsCompleted;
+        var pendingRequests = requests.ToArray();
+        response.SetResult(session);
         await Task.WhenAll(first, second);
 
+        if (cancelBeforeAssertions)
+        {
+            cancellation.Cancel();
+        }
+
+        secondWasCompleted.Should().BeFalse();
+        second.Should().BeSameAs(first);
+        pendingRequests.Should().Equal("GET /api/auth/me");
+        requests.Should().Equal("GET /api/auth/me");
         state.User!.Username.Should().Be("admin");
         notifications.Should().Be(1);
     }
