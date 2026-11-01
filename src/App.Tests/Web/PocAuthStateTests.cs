@@ -8,10 +8,11 @@ namespace App.Tests.Web;
 
 public sealed class PocAuthStateTests : TestContext
 {
-    private PocAuthState Create(bool enabled, Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
+    private PocAuthState Create(bool enabled, Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests, TimeSpan? probeTimeout = null)
     {
         var http = DelegateHttpMessageHandler.CreateRecordingClient(handle, out requests);
-        return new PocAuthState(http, enabled);
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        return new PocAuthState(http, enabled, probeTimeout);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
@@ -34,29 +35,21 @@ public sealed class PocAuthStateTests : TestContext
         state.User.Should().BeNull();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe(bool cancelBeforeAssertions)
+    [Fact]
+    public async Task InitializeAsync_ConcurrentCalls_AwaitsTheSameSessionProbe()
     {
-        using var cancellation = new CancellationTokenSource();
         var session = Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}");
         var response = new TaskCompletionSource<HttpResponseMessage>();
-        var state = Create(true, _ => response.Task, out var requests);
+        var state = Create(true, _ => response.Task, out var requests, Timeout.InfiniteTimeSpan);
         var notifications = 0;
         state.Changed += () => notifications++;
 
-        var first = state.InitializeAsync(cancellation.Token);
+        var first = state.InitializeAsync();
         var second = state.InitializeAsync();
         var secondWasCompleted = second.IsCompleted;
         var pendingRequests = requests.ToArray();
         response.SetResult(session);
         await Task.WhenAll(first, second);
-
-        if (cancelBeforeAssertions)
-        {
-            cancellation.Cancel();
-        }
 
         secondWasCompleted.Should().BeFalse();
         second.Should().BeSameAs(first);
@@ -64,6 +57,44 @@ public sealed class PocAuthStateTests : TestContext
         requests.Should().Equal("GET /api/auth/me");
         state.User!.Username.Should().Be("admin");
         notifications.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ProbeExceedsTimeout_LeavesUserNullWithoutThrowing()
+    {
+        using var http = DelegateHttpMessageHandler.CreateClient(async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return Json(HttpStatusCode.OK, "{}");
+        });
+        var state = new PocAuthState(http, true, TimeSpan.FromMilliseconds(1));
+
+        await state.InitializeAsync();
+
+        state.User.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_CallerCancelsPendingProbe_LeavesUserNullWithoutThrowing()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var http = DelegateHttpMessageHandler.CreateClient(async (_, token) =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return Json(HttpStatusCode.OK, "{}");
+        });
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        var state = new PocAuthState(http, true, Timeout.InfiniteTimeSpan);
+        var initialization = state.InitializeAsync(cancellation.Token);
+        await started.Task;
+
+        initialization.IsCompleted.Should().BeFalse();
+        cancellation.Cancel();
+        await initialization;
+
+        state.User.Should().BeNull();
     }
 
     [Theory]

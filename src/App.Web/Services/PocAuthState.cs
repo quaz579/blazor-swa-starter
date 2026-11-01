@@ -18,7 +18,7 @@ public sealed record PasswordChangeResult(string? Error, string? Warning);
 
 public sealed class PocAuthState
 {
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _probeTimeout;
     private const string UnconfirmedRevocationWarning = "Password changed, but sign-out of other devices could not be confirmed.";
     private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
@@ -27,9 +27,10 @@ public sealed class PocAuthState
     private Task? _initialization;
     private int _revision;
 
-    public PocAuthState(HttpClient http, bool enabled)
+    public PocAuthState(HttpClient http, bool enabled, TimeSpan? probeTimeout = null)
     {
         _http = http;
+        _probeTimeout = probeTimeout ?? TimeSpan.FromSeconds(5);
         Enabled = enabled;
     }
 
@@ -47,7 +48,7 @@ public sealed class PocAuthState
     private async Task InitializeCoreAsync(CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ProbeTimeout);
+        timeout.CancelAfter(_probeTimeout);
         var revision = _revision;
         var user = await FetchMeAsync(timeout.Token);
         if (revision == _revision)
