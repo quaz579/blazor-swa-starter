@@ -1,0 +1,26 @@
+@inject PocAuthState Auth
+
+@if (Auth.Enabled && Auth.ProbeFailed)
+{
+    <div class="alert alert-warning" role="alert" data-testid="auth-probe-failed">
+        Couldn't check sign-in.
+        <button type="button" class="btn btn-outline-secondary" data-testid="auth-probe-retry" disabled="@_busy" @onclick="RetryAsync" @onclick:stopPropagation="true">Retry</button>
+    </div>
+}
+
+@code {
+    private bool _busy;
+
+    private async Task RetryAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Auth.InitializeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

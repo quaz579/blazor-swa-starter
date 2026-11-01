@@ -12,13 +12,16 @@ public sealed class PocAuthStateTests : TestContext
     {
         var http = DelegateHttpMessageHandler.CreateRecordingClient(handle, out requests);
         http.Timeout = Timeout.InfiniteTimeSpan;
-        return new PocAuthState(http, enabled, probeTimeout);
+        return new PocAuthState(http, enabled, probeTimeout, timeProvider: new ProbeTimeProvider(), retryBackoff: TimeSpan.Zero);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     [Theory]
+    [InlineData("{}")]
+    [InlineData("null")]
+    [InlineData("{\"authenticated\":null}")]
     [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[null]}")]
     [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\"admin\",null]}")]
     [InlineData("{\"authenticated\":true,\"username\":\"admin\",\"roles\":[\" \"]}")]
@@ -33,6 +36,24 @@ public sealed class PocAuthStateTests : TestContext
         await state.InitializeAsync();
 
         state.User.Should().BeNull();
+        state.ProbeFailed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_UnexpectedHandlerFailure_PropagatesAndAllowsLaterRetry()
+    {
+        var calls = 0;
+        var state = Create(true, _ => ++calls == 1
+            ? throw new InvalidOperationException("handler failed")
+            : Task.FromResult(Json(HttpStatusCode.OK, "{\"authenticated\":false}")), out _);
+
+        Func<Task> initialize = () => state.InitializeAsync();
+        await initialize.Should().ThrowAsync<InvalidOperationException>().WithMessage("handler failed");
+        await state.InitializeAsync();
+
+        calls.Should().Be(2);
+        state.ProbeFailed.Should().BeFalse();
+        state.IsSignedIn.Should().BeFalse();
     }
 
     [Fact]
@@ -59,19 +80,96 @@ public sealed class PocAuthStateTests : TestContext
         notifications.Should().Be(1);
     }
 
-    [Fact]
-    public async Task InitializeAsync_ProbeExceedsTimeout_LeavesUserNullWithoutThrowing()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InitializeAsync_TimeoutThenRetry_PublishesSuccessOrFailureAndAllowsRecovery(bool succeeds)
     {
-        using var http = DelegateHttpMessageHandler.CreateClient(async (_, token) =>
+        var clock = new ProbeTimeProvider();
+        var calls = 0;
+        using var http = DelegateHttpMessageHandler.CreateClient((_, token) =>
         {
-            await Task.Delay(Timeout.Infinite, token);
-            return Json(HttpStatusCode.OK, "{}");
+            calls++;
+            if (calls > 2 || (calls == 2 && succeeds))
+            {
+                return Task.FromResult(Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}"));
+            }
+            var pending = new TaskCompletionSource<HttpResponseMessage>();
+            token.Register(() => pending.TrySetCanceled(token));
+            return pending.Task;
         });
-        var state = new PocAuthState(http, true, TimeSpan.FromMilliseconds(1));
+        var state = new PocAuthState(http, true, timeProvider: clock, retryBackoff: TimeSpan.FromSeconds(3));
 
+        var initialization = state.InitializeAsync();
+        (await clock.FireNextAsync()).Should().Be(TimeSpan.FromSeconds(25));
+        (await clock.FireNextAsync()).Should().Be(TimeSpan.FromSeconds(3));
+        if (!succeeds)
+        {
+            (await clock.FireNextAsync()).Should().Be(TimeSpan.FromSeconds(25));
+        }
+        await initialization;
+
+        calls.Should().Be(2);
+        state.ProbeFailed.Should().Be(!succeeds);
+        state.IsSignedIn.Should().Be(succeeds);
+        if (!succeeds)
+        {
+            state.User.Should().BeNull();
+        }
         await state.InitializeAsync();
+        calls.Should().Be(succeeds ? 2 : 3);
+        state.ProbeFailed.Should().BeFalse();
+        state.User!.Username.Should().Be("admin");
+    }
 
-        state.User.Should().BeNull();
+    [Theory]
+    [InlineData("login")]
+    [InlineData("logout")]
+    [InlineData("change-password")]
+    public async Task AuthOperationAsync_InternalDeadline_ReturnsTransportErrorWithoutWaiting(string operation)
+    {
+        var clock = new ProbeTimeProvider();
+        using var http = DelegateHttpMessageHandler.CreateClient((_, token) =>
+        {
+            var pending = new TaskCompletionSource<HttpResponseMessage>();
+            token.Register(() => pending.TrySetCanceled(token));
+            return pending.Task;
+        });
+        var state = new PocAuthState(http, true, timeProvider: clock);
+        var command = operation switch
+        {
+            "login" => state.LoginAsync("admin", "fixture-pass1"),
+            "logout" => state.LogoutAsync(),
+            _ => PasswordErrorAsync(),
+        };
+        async Task<string?> PasswordErrorAsync() => (await state.ChangePasswordAsync("old-pass1", "new-pass2")).Error;
+
+        (await clock.FireNextAsync()).Should().Be(TimeSpan.FromSeconds(30));
+
+        (await command).Should().Be("Could not reach the API. Try again.");
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ConcurrentCallsDuringBackoff_ShareOneBoundedRetry()
+    {
+        var clock = new ProbeTimeProvider();
+        var attempts = 0;
+        using var http = DelegateHttpMessageHandler.CreateClient((_, _) =>
+        {
+            attempts++;
+            throw new HttpRequestException("down");
+        });
+        var state = new PocAuthState(http, true, timeProvider: clock);
+        var first = state.InitializeAsync();
+        var second = state.InitializeAsync();
+        second.Should().BeSameAs(first);
+        attempts.Should().Be(1);
+
+        (await clock.FireNextAsync()).Should().Be(TimeSpan.FromSeconds(1));
+        await Task.WhenAll(first, second);
+
+        attempts.Should().Be(2);
+        state.ProbeFailed.Should().BeTrue();
     }
 
     [Fact]
@@ -82,11 +180,12 @@ public sealed class PocAuthStateTests : TestContext
         using var http = DelegateHttpMessageHandler.CreateClient(async (_, token) =>
         {
             started.SetResult();
-            await Task.Delay(Timeout.Infinite, token);
-            return Json(HttpStatusCode.OK, "{}");
+            var pending = new TaskCompletionSource<HttpResponseMessage>();
+            using var registration = token.Register(() => pending.TrySetCanceled(token));
+            return await pending.Task;
         });
         http.Timeout = Timeout.InfiniteTimeSpan;
-        var state = new PocAuthState(http, true, Timeout.InfiniteTimeSpan);
+        var state = new PocAuthState(http, true, Timeout.InfiniteTimeSpan, timeProvider: new ProbeTimeProvider());
         var initialization = state.InitializeAsync(cancellation.Token);
         await started.Task;
 
@@ -128,6 +227,7 @@ public sealed class PocAuthStateTests : TestContext
         await state.InitializeAsync();
 
         requests.Should().BeEmpty();
+        state.ProbeFailed.Should().BeFalse();
         state.Enabled.Should().BeFalse();
         state.IsSignedIn.Should().BeFalse();
     }
@@ -150,21 +250,23 @@ public sealed class PocAuthStateTests : TestContext
 
         await state.InitializeAsync();
 
+        state.ProbeFailed.Should().BeFalse();
         state.IsSignedIn.Should().BeFalse();
     }
 
     [Fact]
-    public async Task Initialize_WhenMeReturnsAnErrorStatus_StaysSignedOut()
+    public async Task InitializeAsync_ServerError_ExposesProbeFailure()
     {
         var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.InternalServerError, "{}")), out _);
 
         await state.InitializeAsync();
 
+        state.ProbeFailed.Should().BeTrue();
         state.IsSignedIn.Should().BeFalse();
     }
 
     [Fact]
-    public async Task Initialize_WhenMeFailsOrTimesOut_StaysSignedOutWithoutThrowing()
+    public async Task InitializeAsync_TransportFailure_ExposesProbeFailure()
     {
         var failing = Create(true, _ => throw new HttpRequestException("down"), out _);
         var slow = Create(true, _ => throw new TaskCanceledException("timeout"), out _);
@@ -172,8 +274,21 @@ public sealed class PocAuthStateTests : TestContext
         await failing.InitializeAsync();
         await slow.InitializeAsync();
 
+        failing.ProbeFailed.Should().BeTrue();
+        slow.ProbeFailed.Should().BeTrue();
         failing.IsSignedIn.Should().BeFalse();
         slow.IsSignedIn.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_Unauthorized_PublishesSignedOutWithoutFailure()
+    {
+        var state = Create(true, _ => Task.FromResult(Json(HttpStatusCode.Unauthorized, "{}")), out var requests);
+        await state.InitializeAsync();
+        await state.InitializeAsync();
+        requests.Should().Equal("GET /api/auth/me");
+        state.IsSignedIn.Should().BeFalse();
+        state.ProbeFailed.Should().BeFalse();
     }
 
     [Fact]

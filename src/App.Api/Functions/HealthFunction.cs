@@ -8,10 +8,12 @@ namespace App.Api.Functions;
 public sealed class HealthFunction
 {
     private readonly ILogger<HealthFunction> _logger;
+    private readonly TimeProvider _timeProvider;
 
-    public HealthFunction(ILogger<HealthFunction> logger)
+    public HealthFunction(ILogger<HealthFunction> logger, TimeProvider? timeProvider = null)
     {
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>GET /api/health</summary>
@@ -23,7 +25,7 @@ public sealed class HealthFunction
         _logger.LogInformation("Processing health check request");
 
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { status = "ok", utc = DateTimeOffset.UtcNow }, cancellationToken);
+        await response.WriteAsJsonAsync(new { status = "ok", utc = _timeProvider.GetUtcNow() }, cancellationToken);
         return response;
     }
 }

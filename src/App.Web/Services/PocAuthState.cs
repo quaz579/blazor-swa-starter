@@ -8,7 +8,7 @@ public sealed record PocUser(string Username, string[] Roles);
 
 internal sealed record LoginResponse(string? Username, string?[]? Roles);
 
-internal sealed record MeResponse(bool Authenticated, string? Username, string?[]? Roles);
+internal sealed record MeResponse(bool? Authenticated, string? Username, string?[]? Roles);
 
 internal sealed record ErrorResponse(string? Error);
 
@@ -19,6 +19,10 @@ public sealed record PasswordChangeResult(string? Error, string? Warning);
 public sealed class PocAuthState
 {
     private readonly TimeSpan _probeTimeout;
+    private readonly TimeSpan _retryBackoff;
+    private readonly TimeProvider _timeProvider;
+    private readonly object _initializationGate = new();
+    private bool _initialized;
     private const string UnconfirmedRevocationWarning = "Password changed, but sign-out of other devices could not be confirmed.";
     private const string ConflictFallback = "The password was changed by another request. Enter the new current password and try again.";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
@@ -27,10 +31,13 @@ public sealed class PocAuthState
     private Task? _initialization;
     private int _revision;
 
-    public PocAuthState(HttpClient http, bool enabled, TimeSpan? probeTimeout = null)
+    public PocAuthState(HttpClient http, bool enabled, TimeSpan? probeTimeout = null,
+        TimeProvider? timeProvider = null, TimeSpan? retryBackoff = null)
     {
         _http = http;
-        _probeTimeout = probeTimeout ?? TimeSpan.FromSeconds(5);
+        _probeTimeout = probeTimeout ?? TimeSpan.FromSeconds(25);
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _retryBackoff = retryBackoff ?? TimeSpan.FromSeconds(1);
         Enabled = enabled;
     }
 
@@ -42,25 +49,104 @@ public sealed class PocAuthState
 
     public bool IsSignedIn => User is not null;
 
-    public Task InitializeAsync(CancellationToken cancellationToken = default) =>
-        Enabled ? _initialization ??= InitializeCoreAsync(cancellationToken) : Task.CompletedTask;
+    public bool ProbeFailed { get; private set; }
 
-    private async Task InitializeCoreAsync(CancellationToken cancellationToken)
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_probeTimeout);
-        var revision = _revision;
-        var user = await FetchMeAsync(timeout.Token);
-        if (revision == _revision)
+        lock (_initializationGate)
         {
-            SetUser(user);
+            if (!Enabled)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_initialization is not null)
+            {
+                return _initialization;
+            }
+
+            if (_initialized)
+            {
+                return Task.CompletedTask;
+            }
+
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _initialization = completion.Task;
+            _ = InitializeCoreAsync(completion, cancellationToken);
+            return completion.Task;
+        }
+    }
+
+    private async Task InitializeCoreAsync(TaskCompletionSource completion, CancellationToken cancellationToken)
+    {
+        var revision = _revision;
+        Exception? failure = null;
+        try
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                if (revision != _revision || cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                try
+                {
+                    using var deadline = new CancellationTokenSource(_probeTimeout, _timeProvider);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+                    var user = await FetchMeAsync(timeout.Token);
+                    if (revision == _revision)
+                    {
+                        SetUser(user);
+                    }
+                    return;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)
+                {
+                    if (cancellationToken.IsCancellationRequested || revision != _revision)
+                    {
+                        return;
+                    }
+                    if (attempt == 0)
+                    {
+                        await Task.Delay(_retryBackoff, _timeProvider, cancellationToken);
+                    }
+                }
+            }
+
+            if (revision == _revision)
+            {
+                ProbeFailed = true;
+                Changed?.Invoke();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            lock (_initializationGate)
+            {
+                _initialization = null;
+            }
+            if (failure is null)
+            {
+                completion.TrySetResult();
+            }
+            else
+            {
+                completion.TrySetException(failure);
+            }
         }
     }
 
     public async Task<string?> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(CommandTimeout);
+        using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             using var response = await _http.PostAsJsonAsync("api/auth/login", new { username, password }, timeout.Token);
@@ -101,8 +187,8 @@ public sealed class PocAuthState
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(CommandTimeout);
+        using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             using var response = await _http.PostAsJsonAsync("api/auth/change-password", new { currentPassword, newPassword }, timeout.Token);
@@ -137,8 +223,8 @@ public sealed class PocAuthState
 
     public async Task<string?> LogoutAsync(CancellationToken cancellationToken = default)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(CommandTimeout);
+        using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
             using var response = await _http.PostAsync("api/auth/logout", content: null, timeout.Token);
@@ -160,6 +246,8 @@ public sealed class PocAuthState
     {
         _revision++;
         User = user;
+        ProbeFailed = false;
+        _initialized = true;
         Changed?.Invoke();
     }
 
@@ -217,22 +305,22 @@ public sealed class PocAuthState
 
     private async Task<PocUser?> FetchMeAsync(CancellationToken cancellationToken)
     {
-        try
-        {
-            using var response = await _http.GetAsync("api/auth/me", cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            var me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken: cancellationToken);
-            return me is { Authenticated: true }
-                ? CreateValidatedUser(me.Username, me.Roles)
-                : null;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)
+        using var response = await _http.GetAsync("api/auth/me", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             return null;
         }
+
+        response.EnsureSuccessStatusCode();
+        var me = await response.Content.ReadFromJsonAsync<MeResponse>(cancellationToken: cancellationToken)
+            ?? throw new JsonException("Missing session response.");
+        if (me.Authenticated is false)
+        {
+            return null;
+        }
+
+        return me.Authenticated is true
+            ? CreateValidatedUser(me.Username, me.Roles) ?? throw new JsonException("Invalid session identity.")
+            : throw new JsonException("Missing authentication status.");
     }
 }

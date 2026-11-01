@@ -1,4 +1,5 @@
 using App.Api.Functions;
+using App.Tests.PocAuth;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -6,26 +7,22 @@ namespace App.Tests.Functions;
 
 public sealed class HealthFunctionTests
 {
-    private readonly HealthFunction _function = new(NullLogger<HealthFunction>.Instance);
+    private readonly TestTimeProvider _time = new();
 
     [Fact]
     public async Task GetHealth_Always_Returns200WithOkStatusAndUtcTimestamp()
     {
-        // Arrange
         var request = TestHttpRequestData.CreateRequest();
-        var before = DateTimeOffset.UtcNow;
+        var function = new HealthFunction(NullLogger<HealthFunction>.Instance, _time);
 
-        // Act
-        var response = await _function.GetHealth(request, CancellationToken.None);
-        var after = DateTimeOffset.UtcNow;
+        var response = await function.GetHealth(request, CancellationToken.None);
 
-        // Assert
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
         using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
         body.RootElement.GetProperty("status").GetString().Should().Be("ok");
 
         var utc = body.RootElement.GetProperty("utc").GetDateTimeOffset();
-        utc.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        utc.Should().Be(_time.GetUtcNow());
     }
 }

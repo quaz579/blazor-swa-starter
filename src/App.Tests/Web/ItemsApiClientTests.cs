@@ -156,7 +156,7 @@ public sealed class ItemsApiClientTests
     [Fact]
     public async Task GetItemsAsync_ApiReturns200_ReturnsDeserializedItems()
     {
-        var items = new List<Item> { new() { Id = "1", Name = "Widget", CreatedAt = DateTimeOffset.UtcNow } };
+        var items = new List<Item> { new() { Id = "1", Name = "Widget", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") } };
         var client = CreateClient((_, _) => Task.FromResult(FakeApiResponses.Ok(items)));
 
         var result = await client.GetItemsAsync();

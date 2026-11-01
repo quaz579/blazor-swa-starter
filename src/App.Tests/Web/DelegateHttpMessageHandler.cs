@@ -10,7 +10,7 @@ internal sealed class DelegateHttpMessageHandler(
     Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler) : HttpMessageHandler
 {
     public static HttpClient CreateClient(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handle) =>
-        new(new DelegateHttpMessageHandler(handle)) { BaseAddress = new Uri("https://api.test/") };
+        new(new DelegateHttpMessageHandler(handle)) { BaseAddress = new Uri("https://api.test/"), Timeout = Timeout.InfiniteTimeSpan };
 
     public static HttpClient CreateRecordingClient(Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
     {

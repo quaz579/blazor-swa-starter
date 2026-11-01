@@ -10,7 +10,11 @@
     <div data-testid="login-page">
         <h1>Sign in</h1>
 
-        @if (Auth.IsSignedIn)
+        @if (Auth.ProbeFailed)
+        {
+            <App.Web.Layout.AuthProbeFailure />
+        }
+        else if (Auth.IsSignedIn)
         {
             <p data-testid="login-signed-in">Signed in as <strong>@Auth.User!.Username</strong>.</p>
         }

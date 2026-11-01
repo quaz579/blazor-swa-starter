@@ -22,7 +22,8 @@ public sealed class AzuriteFactAttribute : FactAttribute
         try
         {
             using var client = new TcpClient();
-            return client.ConnectAsync(System.Net.IPAddress.Loopback, 10000).Wait(TimeSpan.FromMilliseconds(500));
+            client.Connect(System.Net.IPAddress.Loopback, 10000);
+            return true;
         }
         catch
         {

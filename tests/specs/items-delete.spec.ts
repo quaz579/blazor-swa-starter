@@ -10,7 +10,7 @@ test.beforeEach(async ({ context }) => {
 
 test('deleting a row removes it, and it stays gone after a reload', async ({ page }) => {
   const items = new ItemsPage(page);
-  const name = `Fixture Delete ${Date.now()}`;
+  const name = 'Fixture Delete';
   await seedItems([{ name }]);
 
   await items.goto();

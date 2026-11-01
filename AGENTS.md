@@ -92,6 +92,14 @@ exists and `node scripts/enable-poc-auth.mjs` has run (it writes
 `src/App.Web/wwwroot/appsettings.json`, and removes the `allowedRoles` routes). The API also honors the `POC_AUTH_ENABLED=true` app
 setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
 
+- Browser session initialization shares one in-flight probe across callers. Each attempt has a
+  25-second default deadline; a failed attempt retries once after a one-second backoff. The
+  timeout, clock, and backoff are injectable. Exhausted transport, timeout, server, or invalid-response
+  failures set `ProbeFailed` without caching initialization as successful. A later `InitializeAsync`
+  can try again. Navigation, Login, and Change password show "Couldn't check sign-in" with a Retry
+  button; they do not present a failed check as signed-out. A 401 or `authenticated:false` is a
+  successful signed-out check. A newer login/logout wins over an older pending probe, including
+  failures. Disabled auth makes no probe and shows no auth or retry UI.
 - Users live in Table Storage (`pocusers`): PBKDF2-SHA512, 220,000 iterations, per-user salt,
   iteration count stored per row. Seeded idempotently on first use from `PocAuthSeed.g.cs`.
 - `POST /api/auth/login` `{username,password}` -> 200 `{username,roles}` + `poc_session` cookie

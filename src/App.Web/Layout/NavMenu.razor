@@ -11,7 +11,7 @@
 </div>
 
 <div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="flex-column">
+    <nav class="flex-column" data-testid="nav-links" aria-busy="@(Auth.Enabled && !_ready ? "true" : "false")">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All" data-testid="nav-home">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
@@ -25,7 +25,11 @@
         @if (Auth.Enabled)
         {
             <div class="nav-item px-3">
-                @if (Auth.IsSignedIn)
+                @if (Auth.ProbeFailed)
+                {
+                    <App.Web.Layout.AuthProbeFailure />
+                }
+                else if (Auth.IsSignedIn)
                 {
                     <span class="nav-link" data-testid="nav-user">@Auth.User!.Username</span>
                     <NavLink class="nav-link" href="change-password" data-testid="nav-change-password">Change password</NavLink>
@@ -47,6 +51,7 @@
 @code {
     private bool collapseNavMenu = true;
     private bool _loggingOut;
+    private bool _ready;
     private string? _logoutError;
 
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
@@ -55,6 +60,7 @@
     {
         Auth.Changed += OnAuthChanged;
         await Auth.InitializeAsync();
+        _ready = true;
     }
 
     private async Task LogoutAsync()

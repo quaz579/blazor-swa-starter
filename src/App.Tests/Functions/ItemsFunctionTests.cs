@@ -62,9 +62,9 @@ public sealed class ItemsFunctionTests
     [Fact]
     public async Task GetItems_MultipleItems_ReturnsNewestCreatedAtFirst()
     {
-        var oldest = new Item { Id = "1", Name = "Oldest", CreatedAt = DateTimeOffset.UtcNow.AddDays(-2) };
-        var middle = new Item { Id = "2", Name = "Middle", CreatedAt = DateTimeOffset.UtcNow.AddDays(-1) };
-        var newest = new Item { Id = "3", Name = "Newest", CreatedAt = DateTimeOffset.UtcNow };
+        var oldest = new Item { Id = "1", Name = "Oldest", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddDays(-2) };
+        var middle = new Item { Id = "2", Name = "Middle", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddDays(-1) };
+        var newest = new Item { Id = "3", Name = "Newest", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
 
         _store.ListKeysAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "1", "2", "3" });
         _store.GetAsync("1", Arg.Any<CancellationToken>()).Returns(oldest);
@@ -95,7 +95,7 @@ public sealed class ItemsFunctionTests
     [Fact]
     public async Task GetItem_ItemExists_Returns200WithItem()
     {
-        var item = new Item { Id = "42", Name = "Found", CreatedAt = DateTimeOffset.UtcNow };
+        var item = new Item { Id = "42", Name = "Found", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
         _store.GetAsync("42", Arg.Any<CancellationToken>()).Returns(item);
         var request = TestHttpRequestData.CreateRequest();
 
