@@ -1,0 +1,33 @@
+name: Starter version
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Test version scripts
+        run: node --test scripts/check-starter-version.test.mjs scripts/write-version-marker.test.mjs
+
+      - name: Check starter version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            node scripts/check-starter-version.mjs --tag "$GITHUB_REF_NAME"
+          else
+            node scripts/check-starter-version.mjs
+          fi
