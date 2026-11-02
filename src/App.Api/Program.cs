@@ -1,7 +1,6 @@
 using System.Text.Json;
 using App.Api.PocAuth;
 using App.Api.Storage;
-using App.Core.Models;
 using Azure.Core.Serialization;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,7 +19,6 @@ var host = new HostBuilder()
             workerOptions.Serializer = new JsonObjectSerializer(new JsonSerializerOptions(JsonSerializerDefaults.Web));
         });
 
-        services.AddBlobJsonStore<Item>("items");
         services.AddPocAuth();
     })
     .Build();

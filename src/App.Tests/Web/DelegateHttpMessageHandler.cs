@@ -2,7 +2,7 @@ namespace App.Tests.Web;
 
 /// <summary>
 /// An <see cref="HttpMessageHandler"/> whose response is supplied by a per-test delegate, so
-/// <see cref="App.Web.Services.ItemsApiClient"/> and any bUnit component that injects it can be
+/// <see cref="App.Web.Services.HealthApiClient"/> and any bUnit component that injects it can be
 /// exercised against canned or deferred (via a <see cref="TaskCompletionSource{T}"/>) responses
 /// without a real API.
 /// </summary>

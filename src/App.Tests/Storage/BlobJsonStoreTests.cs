@@ -1,5 +1,4 @@
 using App.Api.Storage;
-using App.Core.Models;
 using AwesomeAssertions;
 using Azure;
 using Azure.Storage.Blobs;
@@ -11,10 +10,10 @@ namespace App.Tests.Storage;
 
 public sealed class BlobJsonStoreTests
 {
-    private readonly BlobJsonStore<Item> _store = new(
+    private readonly BlobJsonStore<StoreDocument> _store = new(
         "UseDevelopmentStorage=true",
-        new BlobJsonStoreOptions<Item> { Prefix = "items" },
-        NullLogger<BlobJsonStore<Item>>.Instance);
+        new BlobJsonStoreOptions<StoreDocument> { Prefix = "items" },
+        NullLogger<BlobJsonStore<StoreDocument>>.Instance);
 
     [Theory]
     [InlineData("BlobNotFound")]
@@ -27,8 +26,8 @@ public sealed class BlobJsonStoreTests
         blob.ExistsAsync(Arg.Any<CancellationToken>()).Returns(Response.FromValue(true, Substitute.For<Response>()));
         blob.DownloadContentAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromException<Response<BlobDownloadResult>>(new RequestFailedException(404, "Missing", errorCode, null)));
-        var store = new BlobJsonStore<Item>(container,
-            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
+        var store = new BlobJsonStore<StoreDocument>(container,
+            new BlobJsonStoreOptions<StoreDocument> { Prefix = "items" }, NullLogger<BlobJsonStore<StoreDocument>>.Instance);
 
         var result = await store.GetAsync("missing");
 
@@ -49,8 +48,8 @@ public sealed class BlobJsonStoreTests
         blob.ExistsAsync(Arg.Any<CancellationToken>()).Returns(Response.FromValue(true, Substitute.For<Response>()));
         var failure = new RequestFailedException(status, "Storage failure", errorCode, null);
         blob.DownloadContentAsync(Arg.Any<CancellationToken>()).Returns(Task.FromException<Response<BlobDownloadResult>>(failure));
-        var store = new BlobJsonStore<Item>(container,
-            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
+        var store = new BlobJsonStore<StoreDocument>(container,
+            new BlobJsonStoreOptions<StoreDocument> { Prefix = "items" }, NullLogger<BlobJsonStore<StoreDocument>>.Instance);
 
         var act = () => store.GetAsync("key");
 
@@ -94,10 +93,10 @@ public sealed class BlobJsonStoreTests
     public async Task PutAsync_KeyContainsTraversal_FailsClosedBeforeAnyStorageIo()
     {
         var container = Substitute.For<BlobContainerClient>();
-        var store = new BlobJsonStore<Item>(container,
-            new BlobJsonStoreOptions<Item> { Prefix = "items" }, NullLogger<BlobJsonStore<Item>>.Instance);
+        var store = new BlobJsonStore<StoreDocument>(container,
+            new BlobJsonStoreOptions<StoreDocument> { Prefix = "items" }, NullLogger<BlobJsonStore<StoreDocument>>.Instance);
 
-        var act = async () => await store.PutAsync("../../secrets", new Item());
+        var act = async () => await store.PutAsync("../../secrets", new StoreDocument());
 
         await act.Should().ThrowExactlyAsync<ArgumentException>();
         container.ReceivedCalls().Should().BeEmpty();

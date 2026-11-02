@@ -10,7 +10,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress;
 
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBaseUrl) });
-builder.Services.AddScoped<ItemsApiClient>();
+builder.Services.AddScoped<HealthApiClient>();
 builder.Services.AddScoped(sp => new PocAuthState(
     sp.GetRequiredService<HttpClient>(),
     builder.Configuration.GetValue<bool>("PocAuth:Enabled")));

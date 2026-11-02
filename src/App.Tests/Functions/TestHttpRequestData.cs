@@ -34,7 +34,7 @@ internal static class TestHttpRequestData
     }
 
     /// <summary>Creates a fake request whose <see cref="HttpRequestData.CreateResponse()"/> returns a working fake response.</summary>
-    public static HttpRequestData CreateRequest(string method = "GET", string url = "https://localhost/api/items", object? jsonBody = null)
+    public static HttpRequestData CreateRequest(string method = "GET", string url = "https://localhost/api/health", object? jsonBody = null)
     {
         var context = CreateContext();
 

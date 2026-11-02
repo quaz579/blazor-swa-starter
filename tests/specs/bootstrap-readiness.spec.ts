@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { ItemsPage } from '../pages/items-page';
+import { HomePage } from '../pages/home-page';
 
-test('items navigation waits for WASM bootstrap before returning', async ({ page }) => {
+test('home navigation waits for WASM bootstrap before returning', async ({ page }) => {
   let release!: () => void;
   let requested!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -11,9 +11,9 @@ test('items navigation waits for WASM bootstrap before returning', async ({ page
     await gate;
     await route.continue();
   });
-  const items = new ItemsPage(page);
+  const home = new HomePage(page);
   let completed = false;
-  const navigation = items.goto().then(() => { completed = true; });
+  const navigation = home.goto().then(() => { completed = true; });
   try {
     await started;
     await page.waitForLoadState('load');
@@ -23,5 +23,5 @@ test('items navigation waits for WASM bootstrap before returning', async ({ page
     release();
     await navigation;
   }
-  await expect(items.root).toBeVisible();
+  await expect(home.root).toBeVisible();
 });
