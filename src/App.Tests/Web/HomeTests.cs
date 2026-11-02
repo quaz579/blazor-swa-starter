@@ -18,7 +18,7 @@ public sealed class HomeTests : TestContext
 
         var cut = RenderComponent<Home>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable"));
+        cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable");
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class HomeTests : TestContext
 
         var cut = RenderComponent<Home>();
 
-        cut.WaitForAssertion(() => requests.Should().Equal("GET /api/health"));
+        requests.Should().Equal("GET /api/health");
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class HomeTests : TestContext
 
         var cut = RenderComponent<Home>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("ok"));
+        cut.Find("[data-testid='api-health']").TextContent.Should().Be("ok");
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class HomeTests : TestContext
 
         var cut = RenderComponent<Home>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable"));
+        cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable");
     }
 
     [Fact]
@@ -73,6 +73,6 @@ public sealed class HomeTests : TestContext
 
         var cut = RenderComponent<Home>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable"));
+        cut.Find("[data-testid='api-health']").TextContent.Should().Be("unavailable");
     }
 }

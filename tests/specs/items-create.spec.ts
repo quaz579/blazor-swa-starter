@@ -12,7 +12,7 @@ test('creating an item through the form shows it, and it survives a reload', asy
   const items = new ItemsPage(page);
   await items.goto();
 
-  const name = `Fixture Create ${Date.now()}`;
+  const name = 'Fixture Create';
   await items.addItem(name, 'created by the create-item spec');
 
   const row = items.rowByName(name);

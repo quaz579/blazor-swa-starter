@@ -40,7 +40,7 @@ export async function seedItems(items: SeedItem[]): Promise<void> {
         id,
         name: item.name,
         description: item.description ?? null,
-        createdAt: item.createdAt ?? new Date().toISOString(),
+        createdAt: item.createdAt ?? '2026-01-01T12:00:00.000Z',
       };
       const blob = container.getBlockBlobClient(`${itemsPrefix}/${id}.json`);
       const payload = JSON.stringify(body);

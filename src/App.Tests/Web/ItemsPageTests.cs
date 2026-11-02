@@ -28,12 +28,12 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain(error));
+        cut.Find("[data-testid='items-error']").TextContent.Should().Contain(error);
         cut.FindAll("[data-testid='item-row']").Should().BeEmpty();
     }
 
     [Fact]
-    public void Items_WhileLoading_ShowsLoadingIndicator()
+    public async Task Items_WhileLoading_ShowsLoadingIndicator()
     {
         var tcs = new TaskCompletionSource<HttpResponseMessage>();
         RegisterApiClient((_, _) => tcs.Task);
@@ -42,8 +42,9 @@ public sealed class ItemsPageTests : TestContext
 
         cut.Find("[data-testid='items-loading']").Should().NotBeNull();
 
-        tcs.SetResult(FakeApiResponses.Ok(new List<Item>()));
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        await RenderCompletion.AfterAsync(cut, () => cut.FindAll("[data-testid=items-empty]").Count == 1,
+            () => cut.InvokeAsync(() => tcs.SetResult(FakeApiResponses.Ok(new List<Item>()))));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
     }
 
     [Fact]
@@ -51,14 +52,14 @@ public sealed class ItemsPageTests : TestContext
     {
         var items = new List<Item>
         {
-            new() { Id = "1", Name = "First", Description = "First desc", CreatedAt = DateTimeOffset.UtcNow },
-            new() { Id = "2", Name = "Second", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1) },
+            new() { Id = "1", Name = "First", Description = "First desc", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") },
+            new() { Id = "2", Name = "Second", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddMinutes(-1) },
         };
         RegisterApiClient((_, _) => Task.FromResult(FakeApiResponses.Ok(items)));
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.FindAll("[data-testid='item-row']").Should().HaveCount(2));
+        cut.FindAll("[data-testid='item-row']").Should().HaveCount(2);
 
         var firstRow = cut.Find("[data-item-id='1']");
         firstRow.QuerySelector("[data-testid='item-name']")!.TextContent.Should().Be("First");
@@ -75,7 +76,7 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
     }
 
     [Fact]
@@ -85,11 +86,11 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("500"));
+        cut.Find("[data-testid='items-error']").TextContent.Should().Contain("500");
     }
 
     [Fact]
-    public void Items_CreateForm_BlankName_ShowsValidationErrorWithoutCallingApi()
+    public async Task Items_CreateForm_BlankName_ShowsValidationErrorWithoutCallingApi()
     {
         var postCount = 0;
         RegisterApiClient((req, _) =>
@@ -101,29 +102,29 @@ public sealed class ItemsPageTests : TestContext
             return Task.FromResult(FakeApiResponses.Ok(new List<Item>()));
         });
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
 
-        cut.Find("[data-testid='item-add-button']").Click();
+        await cut.Find("[data-testid='item-add-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Name is required.");
         postCount.Should().Be(0);
     }
 
     [Fact]
-    public void Items_CreateForm_NameExceeds100Chars_ShowsValidationError()
+    public async Task Items_CreateForm_NameExceeds100Chars_ShowsValidationError()
     {
         RegisterApiClient((_, _) => Task.FromResult(FakeApiResponses.Ok(new List<Item>())));
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
 
         cut.Find("[data-testid='item-name-input']").Input(new string('a', 101));
-        cut.Find("[data-testid='item-add-button']").Click();
+        await cut.Find("[data-testid='item-add-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Name must be 100 characters or fewer.");
     }
 
     [Fact]
-    public void Items_CreateForm_DescriptionExceeds1000Chars_ShowsValidationErrorWithoutCallingApi()
+    public async Task Items_CreateForm_DescriptionExceeds1000Chars_ShowsValidationErrorWithoutCallingApi()
     {
         var postCount = 0;
         RegisterApiClient((req, _) =>
@@ -135,20 +136,20 @@ public sealed class ItemsPageTests : TestContext
             return Task.FromResult(FakeApiResponses.Ok(new List<Item>()));
         });
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
 
         cut.Find("[data-testid='item-name-input']").Input("Widget");
         cut.Find("[data-testid='item-description-input']").Input(new string('a', 1001));
-        cut.Find("[data-testid='item-add-button']").Click();
+        await cut.Find("[data-testid='item-add-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
         cut.Find("[data-testid='item-validation-error']").TextContent.Should().Be("Description must be 1000 characters or fewer.");
         postCount.Should().Be(0);
     }
 
     [Fact]
-    public void Items_CreateForm_ValidInput_CreatesItemAndReloadsList()
+    public async Task Items_CreateForm_ValidInput_CreatesItemAndReloadsList()
     {
-        var created = new Item { Id = "new-1", Name = "Widget", CreatedAt = DateTimeOffset.UtcNow };
+        var created = new Item { Id = "new-1", Name = "Widget", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
         var postCount = 0;
         RegisterApiClient((req, _) =>
         {
@@ -160,20 +161,20 @@ public sealed class ItemsPageTests : TestContext
             return Task.FromResult(FakeApiResponses.Ok(postCount == 0 ? new List<Item>() : new List<Item> { created }));
         });
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
 
         cut.Find("[data-testid='item-name-input']").Input("Widget");
-        cut.Find("[data-testid='item-add-button']").Click();
+        await cut.Find("[data-testid='item-add-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='item-row']"));
+        cut.Find("[data-testid='item-row']").Should().NotBeNull();
         postCount.Should().Be(1);
         cut.Find("[data-testid='item-name']").TextContent.Should().Be("Widget");
     }
 
     [Fact]
-    public void Items_DeleteButtonClicked_CallsDeleteAndReloadsList()
+    public async Task Items_DeleteButtonClicked_CallsDeleteAndReloadsList()
     {
-        var item = new Item { Id = "del-1", Name = "ToDelete", CreatedAt = DateTimeOffset.UtcNow };
+        var item = new Item { Id = "del-1", Name = "ToDelete", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
         var deleteCount = 0;
         RegisterApiClient((req, _) =>
         {
@@ -185,11 +186,11 @@ public sealed class ItemsPageTests : TestContext
             return Task.FromResult(FakeApiResponses.Ok(deleteCount == 0 ? new List<Item> { item } : new List<Item>()));
         });
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='item-row']"));
+        cut.Find("[data-testid='item-row']").Should().NotBeNull();
 
-        cut.Find("[data-testid='item-delete-button']").Click();
+        await cut.Find("[data-testid='item-delete-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
         deleteCount.Should().Be(1);
     }
 
@@ -200,12 +201,11 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() =>
         {
             var error = cut.Find("[data-testid='items-error']").TextContent;
             error.Should().Contain("Could not reach the API");
             error.Should().NotContain("HTTP");
-        });
+        }
     }
 
     [Fact]
@@ -215,7 +215,7 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API"));
+        cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API");
     }
 
     [Fact]
@@ -228,21 +228,21 @@ public sealed class ItemsPageTests : TestContext
 
         var cut = RenderComponent<Items>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("unexpected response"));
+        cut.Find("[data-testid='items-error']").TextContent.Should().Contain("unexpected response");
     }
 
     [Fact]
-    public void Items_TransportFailureOnCreate_ShowsInlineError()
+    public async Task Items_TransportFailureOnCreate_ShowsInlineError()
     {
         RegisterApiClient((req, _) => req.Method == HttpMethod.Post
             ? throw new HttpRequestException("connection reset")
             : Task.FromResult(FakeApiResponses.Ok(new List<Item>())));
         var cut = RenderComponent<Items>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-empty']"));
+        cut.Find("[data-testid='items-empty']").Should().NotBeNull();
         cut.Find("[data-testid='item-name-input']").Input("Widget");
 
-        cut.Find("[data-testid='item-add-button']").Click();
+        await cut.Find("[data-testid='item-add-button']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API"));
+        cut.Find("[data-testid='items-error']").TextContent.Should().Contain("Could not reach the API");
     }
 }

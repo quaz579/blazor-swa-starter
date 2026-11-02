@@ -16,7 +16,7 @@ public sealed class ChangePasswordPageTests : TestContext
     private PocAuthState Register(Func<HttpRequestMessage, HttpResponseMessage> handle, out List<string> requests)
     {
         var http = DelegateHttpMessageHandler.CreateRecordingClient(req => Task.FromResult(handle(req)), out requests);
-        var state = new PocAuthState(http, true);
+        var state = new PocAuthState(http, true, timeProvider: new ProbeTimeProvider(), retryBackoff: TimeSpan.Zero);
         Services.AddSingleton(state);
         return state;
     }
@@ -38,85 +38,85 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public void SignedOut_ShowsASignInPromptInsteadOfTheForm()
+    public void Render_SignedOut_ShowsASignInPromptInsteadOfTheForm()
     {
         Register(req => Route(req, new HttpResponseMessage(HttpStatusCode.NoContent), signedIn: false), out _);
 
         var cut = RenderComponent<ChangePassword>();
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-signin-required']"));
+        cut.Find("[data-testid='change-password-signin-required']").Should().NotBeNull();
         cut.FindAll("[data-testid='change-password-submit']").Should().BeEmpty();
     }
 
     [Fact]
-    public void SignedIn_SubmittingValidPasswords_ShowsSuccessAndClearsTheFields()
+    public async Task SignedIn_SubmittingValidPasswords_ShowsSuccessAndClearsTheFields()
     {
         Register(req => Route(req, new HttpResponseMessage(HttpStatusCode.NoContent)), out var requests);
         var cut = RenderComponent<ChangePassword>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+        cut.Find("[data-testid='change-password-submit']").Should().NotBeNull();
 
         Fill(cut, "Ch@nageM3", "Another-pass-9", "Another-pass-9");
-        cut.Find("form").Submit();
+        await cut.Find("form").TriggerEventAsync("onsubmit", EventArgs.Empty);
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-success']"));
+        cut.Find("[data-testid='change-password-success']").Should().NotBeNull();
         requests.Should().Contain("POST /api/auth/change-password");
         cut.Find("[data-testid='change-password-current']").GetAttribute("value").Should().BeNullOrEmpty();
     }
 
     [Fact]
-    public void MismatchedConfirmation_ShowsAnErrorWithoutCallingTheApi()
+    public async Task Submit_MismatchedConfirmation_ShowsAnErrorWithoutCallingTheApi()
     {
         Register(req => Route(req, new HttpResponseMessage(HttpStatusCode.NoContent)), out var requests);
         var cut = RenderComponent<ChangePassword>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+        cut.Find("[data-testid='change-password-submit']").Should().NotBeNull();
 
         Fill(cut, "Ch@nageM3", "Another-pass-9", "Different-pass-9");
-        cut.Find("form").Submit();
+        await cut.Find("form").TriggerEventAsync("onsubmit", EventArgs.Empty);
 
         cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("do not match");
         requests.Should().NotContain("POST /api/auth/change-password");
     }
 
     [Fact]
-    public void ServerRejection_ShowsTheServerMessageAndKeepsTheFormUsable()
+    public async Task Submit_ServerRejection_ShowsTheServerMessageAndKeepsTheFormUsable()
     {
         Register(req => Route(req, Json(HttpStatusCode.BadRequest, "{\"error\":\"The current password is incorrect.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+        cut.Find("[data-testid='change-password-submit']").Should().NotBeNull();
 
         Fill(cut, "wrong", "Another-pass-9", "Another-pass-9");
-        cut.Find("form").Submit();
+        await cut.Find("form").TriggerEventAsync("onsubmit", EventArgs.Empty);
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("current password is incorrect"));
+        cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("current password is incorrect");
         cut.Find("[data-testid='change-password-submit']").HasAttribute("disabled").Should().BeFalse();
     }
 
     [Fact]
-    public void RevocationWarning_ShowsAWarningInsteadOfTheOtherDevicesPromise()
+    public async Task Submit_RevocationWarning_ShowsAWarningInsteadOfTheOtherDevicesPromise()
     {
         Register(req => Route(req, Json(HttpStatusCode.OK, "{\"warning\":\"Password changed, but other devices could not be signed out.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+        cut.Find("[data-testid='change-password-submit']").Should().NotBeNull();
 
         Fill(cut, "Ch@nageM3", "Another-pass-9", "Another-pass-9");
-        cut.Find("form").Submit();
+        await cut.Find("form").TriggerEventAsync("onsubmit", EventArgs.Empty);
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-warning']").TextContent.Should().Contain("other devices could not be signed out"));
+        cut.Find("[data-testid='change-password-warning']").TextContent.Should().Contain("other devices could not be signed out");
         cut.FindAll("[data-testid='change-password-success']").Should().BeEmpty();
         cut.Markup.Should().NotContain("Other devices are signed out when you change it");
     }
 
     [Fact]
-    public void Conflict_ShowsTheServerMessageAndKeepsTheFormUsable()
+    public async Task Submit_Conflict_ShowsTheServerMessageAndKeepsTheFormUsable()
     {
         Register(req => Route(req, Json(HttpStatusCode.Conflict, "{\"error\":\"The password was changed by another request. Enter the new current password and try again.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-submit']"));
+        cut.Find("[data-testid='change-password-submit']").Should().NotBeNull();
 
         Fill(cut, "Ch@nageM3", "Another-pass-9", "Another-pass-9");
-        cut.Find("form").Submit();
+        await cut.Find("form").TriggerEventAsync("onsubmit", EventArgs.Empty);
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("Enter the new current password"));
+        cut.Find("[data-testid='change-password-error']").TextContent.Should().Contain("Enter the new current password");
         cut.Find("[data-testid='change-password-submit']").HasAttribute("disabled").Should().BeFalse();
     }
 }

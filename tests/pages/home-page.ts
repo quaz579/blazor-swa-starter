@@ -1,3 +1,4 @@
+import { gotoApp } from '../helpers/app-ready';
 import { Locator, Page } from '@playwright/test';
 import { NavMenu } from './nav-menu';
 
@@ -16,6 +17,6 @@ export class HomePage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/');
+    await gotoApp(this.page, '/');
   }
 }

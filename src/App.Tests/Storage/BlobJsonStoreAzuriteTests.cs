@@ -35,7 +35,7 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
     public async Task PutAsync_ThenGetAsync_ReturnsStoredItem()
     {
         // Arrange
-        var item = new Item { Id = "abc123", Name = "Widget", Description = "A widget", CreatedAt = DateTimeOffset.UtcNow };
+        var item = new Item { Id = "abc123", Name = "Widget", Description = "A widget", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
 
         // Act
         await _store.PutAsync(item.Id, item);
@@ -64,8 +64,8 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
     {
         // Arrange
         const string key = "overwrite-me";
-        var original = new Item { Id = key, Name = "Original", CreatedAt = DateTimeOffset.UtcNow };
-        var updated = new Item { Id = key, Name = "Updated", CreatedAt = DateTimeOffset.UtcNow.AddMinutes(1) };
+        var original = new Item { Id = key, Name = "Original", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") };
+        var updated = new Item { Id = key, Name = "Updated", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddMinutes(1) };
 
         // Act
         await _store.PutAsync(key, original);
@@ -82,9 +82,9 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
     public async Task ListKeysAsync_WithPrefix_ReturnsOnlyMatchingKeys()
     {
         // Arrange
-        await _store.PutAsync("widget-1", new Item { Id = "widget-1", Name = "W1", CreatedAt = DateTimeOffset.UtcNow });
-        await _store.PutAsync("widget-2", new Item { Id = "widget-2", Name = "W2", CreatedAt = DateTimeOffset.UtcNow });
-        await _store.PutAsync("gadget-1", new Item { Id = "gadget-1", Name = "G1", CreatedAt = DateTimeOffset.UtcNow });
+        await _store.PutAsync("widget-1", new Item { Id = "widget-1", Name = "W1", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") });
+        await _store.PutAsync("widget-2", new Item { Id = "widget-2", Name = "W2", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") });
+        await _store.PutAsync("gadget-1", new Item { Id = "gadget-1", Name = "G1", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") });
 
         // Act
         var keys = await _store.ListKeysAsync("widget");
@@ -98,7 +98,7 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
     {
         // Arrange
         const string key = "to-delete";
-        await _store.PutAsync(key, new Item { Id = key, Name = "Temp", CreatedAt = DateTimeOffset.UtcNow });
+        await _store.PutAsync(key, new Item { Id = key, Name = "Temp", CreatedAt = DateTimeOffset.Parse("2026-01-01T12:00:00Z") });
 
         // Act
         var deleted = await _store.DeleteAsync(key);

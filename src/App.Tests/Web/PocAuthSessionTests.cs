@@ -13,7 +13,7 @@ public sealed class PocAuthSessionTests : TestContext
     private PocAuthState Create(bool enabled, Func<HttpRequestMessage, Task<HttpResponseMessage>> handle, out List<string> requests)
     {
         var http = DelegateHttpMessageHandler.CreateRecordingClient(handle, out requests);
-        return new PocAuthState(http, enabled);
+        return new PocAuthState(http, enabled, timeProvider: new ProbeTimeProvider(), retryBackoff: TimeSpan.Zero);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) =>
@@ -30,17 +30,39 @@ public sealed class PocAuthSessionTests : TestContext
         Services.AddSingleton(state);
         var cut = RenderComponent<NavMenu>();
 
-        cut.Find("[data-testid='nav-logout']").Click();
+        await cut.Find("[data-testid='nav-logout']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='nav-logout-error']").TextContent.Should().Be("Sign-out failed with status 500. Try again."));
+        cut.Find("[data-testid='nav-logout-error']").TextContent.Should().Be("Sign-out failed with status 500. Try again.");
         cut.Find("[data-testid='nav-user']").TextContent.Should().Be("admin");
         cut.Find("[data-testid='nav-logout']").HasAttribute("disabled").Should().BeFalse();
 
-        cut.Find("[data-testid='nav-logout']").Click();
+        await cut.Find("[data-testid='nav-logout']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        cut.WaitForAssertion(() => cut.Find("[data-testid='nav-login']").Should().NotBeNull());
+        cut.Find("[data-testid='nav-login']").Should().NotBeNull();
         cut.FindAll("[data-testid='nav-user']").Should().BeEmpty();
         cut.FindAll("[data-testid='nav-logout-error']").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_PendingProbe_MarksNavigationBusyUntilCompletion()
+    {
+        var probe = new TaskCompletionSource<HttpResponseMessage>();
+        var state = Create(true, _ => probe.Task, out var requests);
+        Services.AddSingleton(state);
+        var cut = RenderComponent<NavMenu>();
+        var initialization = state.InitializeAsync();
+        cut.Find("[data-testid=nav-links]").GetAttribute("aria-busy").Should().Be("true");
+
+        await RenderCompletion.AfterAsync(cut,
+            () => cut.Find("[data-testid=nav-links]").GetAttribute("aria-busy") == "false", async () =>
+            {
+                probe.SetResult(Json(HttpStatusCode.OK, "{\"authenticated\":false}"));
+                await initialization;
+            });
+
+        cut.Find("[data-testid=nav-links]").GetAttribute("aria-busy").Should().Be("false");
+        requests.Should().Equal("GET /api/auth/me");
+        state.ProbeFailed.Should().BeFalse();
     }
 
     [Theory]
@@ -80,6 +102,39 @@ public sealed class PocAuthSessionTests : TestContext
         await initialization;
 
         state.User.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InitializeAsync_ProbeFailsAfterAuthCommand_PreservesIdentityWithoutRetry(bool signedIn)
+    {
+        var probe = new TaskCompletionSource<HttpResponseMessage>();
+        var state = Create(true, request => request.Method == HttpMethod.Get
+            ? probe.Task
+            : Task.FromResult(signedIn
+                ? Json(HttpStatusCode.OK, "{\"username\":\"new-user\",\"roles\":[\"user\"]}")
+                : new HttpResponseMessage(HttpStatusCode.NoContent)), out var requests);
+        var initialization = state.InitializeAsync();
+        if (signedIn)
+        {
+            (await state.LoginAsync("new-user", "fixture-pass1")).Should().BeNull();
+        }
+        else
+        {
+            (await state.LogoutAsync()).Should().BeNull();
+        }
+        state.InitializeAsync().Should().BeSameAs(initialization);
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        probe.SetException(new HttpRequestException("down"));
+        await initialization;
+
+        state.IsSignedIn.Should().Be(signedIn);
+        state.ProbeFailed.Should().BeFalse();
+        notifications.Should().Be(0);
+        requests.Should().Equal("GET /api/auth/me", signedIn ? "POST /api/auth/login" : "POST /api/auth/logout");
     }
 
     [Theory]

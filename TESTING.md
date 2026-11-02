@@ -38,6 +38,38 @@ test at that layer as part of the change, not after. A failing test gets fixed b
 whichever side is actually wrong — never by weakening an assertion, adding `Skip`, or loosening
 a match; see `.claude/agents/test-engineer.md` for the full hard rules this repo holds tests to.
 
+## Deterministic timing
+
+Use explicit completion signals for pending work. Await component event handlers; subscribe to
+render completion before releasing a deferred response, using `RenderCompletion.AfterAsync`.
+Completed HTTP mocks can be asserted immediately after rendering. Do not use `Task.Delay`, sleeps,
+bUnit `WaitForState`/`WaitForAssertion` deadlines, or elapsed-time assertions as synchronization.
+`ProbeTimeProvider` fires injected session-probe, command-deadline, and retry-backoff timers under
+explicit test control. Mock HTTP clients disable their independent real-time deadline. Caller
+cancellation tests cancel a pending operation explicitly; synthetic transport exceptions do not
+wait for an actual network timeout. The concurrent session-probe regression injects
+a controlled five-second deadline to preserve the original scenario: capture pending-state
+observations, release the response, and await both callers before running assertions. Keep
+assertion work outside the pending window; retain task identity, exact request counts, identity, and notification
+assertions. Constrained runs can use `DOTNET_PROCESSOR_COUNT=2` and
+`DOTNET_ThreadPool_ForceMaxWorkerThreads=2` with the full unit command. A passing constrained run
+does not establish the cause of a failure in a different product suite.
+
+Use fixed timestamps for fixtures and injected clocks for timestamp/expiry assertions. The
+Azurite availability check awaits the local connection outcome rather than racing a 500 ms cutoff.
+Real emulator integration tests still depend on the emulator's network and storage operations.
+
+Browser tests await observable UI/network completion. `gotoApp` waits for the rendered
+`#app main` element before actions begin; document load alone does not mean WASM has booted.
+Its 60-second watchdog bounds bootstrap, while the normal action budget applies after readiness.
+Deferred session probes freeze browser time so a deliberately held request cannot accidentally
+expire while the test drives the UI. Advance virtual time while awaiting WASM continuations; navigation exposes its pending initialization with
+`aria-busy`, so stale-probe checks await actual completion before asserting identity. Register
+network waiters before releasing route gates and release gates in cleanup. Playwright's test,
+action, navigation, and assertion budgets remain failure watchdogs for external browser/server
+operations; they must not be used as delays or elapsed-time correctness assertions. Concurrent
+password tests assert invariants for any winning request, never a particular scheduling order.
+
 ## E2E (Playwright)
 
 ```sh
@@ -64,7 +96,7 @@ without mutation. CI selects only `smoke.spec.ts` explicitly for deployed previe
 
 With the opt-in POC auth scaffold enabled (see `AGENTS.md`), `tests/specs/poc-auth.spec.ts`
 logs in as the fixture user through `loginAs`, exercises session writes, and checks failed
-sign-out and delayed session probes. `change-password.spec.ts` changes local fixture passwords
+sign-out and delayed session probes, plus failed-check Retry recovery on navigation, Login, and Change password. `change-password.spec.ts` changes local fixture passwords
 and restores them in cleanup, including after failed concurrency assertions; it refuses a
 non-local target. Its anonymous rejection test runs separately without session or password
 cleanup and carries `@smoke`, as does the disabled-auth check. Tests tagged `@prod`

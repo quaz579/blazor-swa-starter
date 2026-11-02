@@ -8,7 +8,7 @@ test.beforeEach(async () => {
 
 test('lists seeded items newest-first', async ({ page }) => {
   const items = new ItemsPage(page);
-  const now = Date.now();
+  const now = Date.parse('2026-01-01T12:00:00Z');
   const oldest = `Fixture Oldest ${now}`;
   const middle = `Fixture Middle ${now}`;
   const newest = `Fixture Newest ${now}`;

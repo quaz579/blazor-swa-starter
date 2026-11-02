@@ -31,7 +31,7 @@ public sealed class StorageClientsTests
         (await store.GetUserAsync(username.ToUpperInvariant()))!.Iterations.Should().Be(1_000);
 
         var tokenHash = Guid.NewGuid().ToString("N");
-        await store.PutSessionAsync(new PocSessionEntity { RowKey = tokenHash, Username = username, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) });
+        await store.PutSessionAsync(new PocSessionEntity { RowKey = tokenHash, Username = username, ExpiresUtc = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddHours(1) });
         (await store.GetSessionAsync(tokenHash))!.Username.Should().Be(username);
         await store.DeleteSessionAsync(tokenHash);
         (await store.GetSessionAsync(tokenHash)).Should().BeNull();
@@ -57,7 +57,7 @@ public sealed class StorageClientsTests
         var keep = Guid.NewGuid().ToString("N");
         var drop = Guid.NewGuid().ToString("N");
         var foreign = Guid.NewGuid().ToString("N");
-        var expires = DateTimeOffset.UtcNow.AddHours(1);
+        var expires = DateTimeOffset.Parse("2026-01-01T12:00:00Z").AddHours(1);
         await store.PutSessionAsync(new PocSessionEntity { RowKey = keep, Username = username, ExpiresUtc = expires });
         await store.PutSessionAsync(new PocSessionEntity { RowKey = drop, Username = username, ExpiresUtc = expires });
         await store.PutSessionAsync(new PocSessionEntity { RowKey = foreign, Username = other, ExpiresUtc = expires });
@@ -77,7 +77,7 @@ public sealed class StorageClientsTests
         var store = new TablePocAuthStore(Local);
         var username = $"azurite-{Guid.NewGuid():N}";
         var (salt, hash, iterations) = PocPasswordHasher.Hash("Original-pass-1", iterations: 1_000);
-        var service = new PocAuthService(store, TimeProvider.System, [new PocSeedUser(username, username, ["user"], salt, hash, iterations)]);
+        var service = new PocAuthService(store, new App.Tests.PocAuth.TestTimeProvider(), [new PocSeedUser(username, username, ["user"], salt, hash, iterations)]);
         await service.SeedAsync();
         var principal = new PocPrincipal(username, ["user"]);
 
