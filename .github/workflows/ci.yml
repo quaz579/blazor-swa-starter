@@ -99,7 +99,23 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Require the dispatched sha
+        if: github.event_name == 'repository_dispatch'
+        env:
+          TARGET_SHA: ${{ github.event.client_payload.sha }}
+        run: |
+          if ! printf '%s' "$TARGET_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "repository_dispatch carried no client_payload.sha" >&2
+            exit 1
+          fi
+          if [ "$TARGET_SHA" != "$GITHUB_SHA" ]; then
+            echo "dispatched sha $TARGET_SHA is not the default branch head $GITHUB_SHA" >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
 
       - name: Check generated agent views
         run: scripts/generate-agent-views.sh --check
@@ -159,7 +175,53 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: FACTORY_E2E_PORT_PREFLIGHT
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ss >/dev/null 2>&1 && ! command -v lsof >/dev/null 2>&1; then
+            echo '::error::FACTORY_E2E_PORT_PREFLIGHT: listener inspection tools are unavailable;' \
+              'ss or lsof is required.'
+            exit 1
+          fi
+          for port in 4280 5158 7071 10000 10001 10002; do
+            pids=""
+            listeners=""
+            if command -v lsof >/dev/null 2>&1; then
+              pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+            fi
+            if command -v ss >/dev/null 2>&1; then
+              listeners="$(ss -H -ltnp "sport = :$port" 2>/dev/null || true)"
+            fi
+            if [ -n "$pids$listeners" ] \
+              || (echo > /dev/tcp/127.0.0.1/"$port") 2>/dev/null \
+              || (echo > /dev/tcp/::1/"$port") 2>/dev/null; then
+              echo "::error::FACTORY_E2E_PORT_PREFLIGHT: port $port is already in use on the runner;" \
+                "stop the existing listener before retrying CI."
+              if [ -n "$listeners" ]; then
+                printf '%s\n' "$listeners"
+                while [[ "$listeners" =~ pid=([0-9]+) ]]; do
+                  pids="$pids ${BASH_REMATCH[1]}"
+                  listeners="${listeners#*pid="${BASH_REMATCH[1]}"}"
+                done
+              fi
+              for pid in $pids; do
+                printf 'Listener PID: %s\n' "$pid"
+                if command -v ps >/dev/null 2>&1; then
+                  ps -ww -p "$pid" -o pid=,args= 2>/dev/null || true
+                fi
+              done
+              if [ -z "$pids" ]; then
+                echo 'Listener PID and command line unavailable (tools missing or access restricted).'
+              fi
+              exit 1
+            fi
+          done
+
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
 
       - uses: actions/setup-dotnet@v6
         env:
@@ -211,10 +273,10 @@ jobs:
         env:
           CI: "true"
           PW_GLOBAL_TIMEOUT_MS: "720000"
-        run: npm test
+        run: npm test -- --timeout=180000
 
       - name: Stop E2E environment
-        if: always()
+        if: always() && hashFiles('scripts/stop-e2e.sh') != ''
         run: ./scripts/stop-e2e.sh
 
       - name: Upload Playwright report
@@ -252,7 +314,53 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: FACTORY_E2E_PORT_PREFLIGHT
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ss >/dev/null 2>&1 && ! command -v lsof >/dev/null 2>&1; then
+            echo '::error::FACTORY_E2E_PORT_PREFLIGHT: listener inspection tools are unavailable;' \
+              'ss or lsof is required.'
+            exit 1
+          fi
+          for port in 4280 5158 7071 10000 10001 10002; do
+            pids=""
+            listeners=""
+            if command -v lsof >/dev/null 2>&1; then
+              pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+            fi
+            if command -v ss >/dev/null 2>&1; then
+              listeners="$(ss -H -ltnp "sport = :$port" 2>/dev/null || true)"
+            fi
+            if [ -n "$pids$listeners" ] \
+              || (echo > /dev/tcp/127.0.0.1/"$port") 2>/dev/null \
+              || (echo > /dev/tcp/::1/"$port") 2>/dev/null; then
+              echo "::error::FACTORY_E2E_PORT_PREFLIGHT: port $port is already in use on the runner;" \
+                "stop the existing listener before retrying CI."
+              if [ -n "$listeners" ]; then
+                printf '%s\n' "$listeners"
+                while [[ "$listeners" =~ pid=([0-9]+) ]]; do
+                  pids="$pids ${BASH_REMATCH[1]}"
+                  listeners="${listeners#*pid="${BASH_REMATCH[1]}"}"
+                done
+              fi
+              for pid in $pids; do
+                printf 'Listener PID: %s\n' "$pid"
+                if command -v ps >/dev/null 2>&1; then
+                  ps -ww -p "$pid" -o pid=,args= 2>/dev/null || true
+                fi
+              done
+              if [ -z "$pids" ]; then
+                echo 'Listener PID and command line unavailable (tools missing or access restricted).'
+              fi
+              exit 1
+            fi
+          done
+
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
 
       - uses: actions/setup-dotnet@v6
         env:
@@ -298,7 +406,7 @@ jobs:
         run: npx playwright test specs/poc-auth.spec.ts specs/change-password.spec.ts
 
       - name: Stop E2E environment
-        if: always()
+        if: always() && hashFiles('scripts/stop-e2e.sh') != ''
         run: ./scripts/stop-e2e.sh
 
       - name: Upload Playwright report
@@ -341,6 +449,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
           submodules: true
           lfs: false
 
@@ -417,6 +526,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
 
       - uses: actions/setup-node@v7
         with:
@@ -463,3 +574,67 @@ jobs:
             tests/playwright-report/
             tests/test-results/
           retention-days: 7
+
+  select-smoke-prod:
+    needs: [deploy]
+    if: >-
+      !cancelled() && (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && (vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true') && needs.deploy.result == 'success'
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      labels: ${{ steps.select.outputs.labels }}
+    steps:
+      - id: select
+        shell: bash
+        env:
+          RUNNER_STATUS_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+        run: *org-app-selector
+
+  smoke-prod:
+    needs: [deploy, select-smoke-prod]
+    if: >-
+      !cancelled() && (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && needs.deploy.result == 'success' && (needs.select-smoke-prod.result == 'success' || (needs.select-smoke-prod.result == 'skipped' && !(vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association))) && vars.RUNNER_MODE != 'hosted' && vars.RUNNER_FALLBACK_ENABLED == 'true')))
+    runs-on: ${{ fromJSON((vars.RUNNER_PROFILE == 'org-app' && github.repository_owner == 'bengrossmandotus' && github.event.repository.private == true && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)))) && vars.RUNNER_MODE != 'hosted' && (vars.RUNNER_FALLBACK_ENABLED != 'true' && '["self-hosted","Linux","X64","factory-apps"]' || needs.select-smoke-prod.outputs.labels) || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      PROD_URL: ${{ needs.deploy.outputs.preview_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.client_payload.sha || github.sha }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Install Playwright test dependencies
+        working-directory: tests
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps ' || '' }}chromium
+
+      - name: Wait for production to come online
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf -o /dev/null "$PROD_URL"; then
+              echo "Production is up: $PROD_URL"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Production never responded at $PROD_URL" >&2
+          exit 1
+
+      - name: Run smoke tests against production
+        working-directory: tests
+        env:
+          CI: "true"
+          BASE_URL: ${{ env.PROD_URL }}
+        run: npx playwright test --config=playwright.factory.config.ts --grep "@smoke|@prod"

@@ -1,0 +1,33 @@
+name: Pin v0.1.13 unit repeat
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  unit-repeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: dotnet build BlazorSwaStarter.sln -c Release
+      - name: Repeat unit tier ten times
+        shell: bash
+        run: |
+          failures=0
+          for iteration in $(seq 1 10); do
+            echo "Unit iteration $iteration/10"
+            if ! dotnet test BlazorSwaStarter.sln -c Release --no-build --logger 'console;verbosity=minimal'; then
+              failures=$((failures + 1))
+            fi
+          done
+          echo "Failed iterations $failures/10"
+          test "$failures" -eq 0

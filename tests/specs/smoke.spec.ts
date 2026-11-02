@@ -19,6 +19,7 @@ test('served version is anonymous JSON and matches the served HTML', { tag: '@sm
   expect(response.headers()['content-type']).toContain('application/json');
   expect(response.headers()['cache-control']).toContain('no-store');
   const marker = await response.json();
+  console.log("Preview /version.json:", JSON.stringify(marker));
   expect(Object.keys(marker).sort()).toEqual(['built_at', 'run_attempt', 'sha', 'starter_tag', 'workflow_run_id']);
   for (const value of Object.values(marker)) expect(typeof value).toBe('string');
   expect(marker.sha).toMatch(/^(?:[a-f0-9]{40}|local)$/);
