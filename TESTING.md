@@ -47,7 +47,13 @@ bUnit `WaitForState`/`WaitForAssertion` deadlines, or elapsed-time assertions as
 `ProbeTimeProvider` fires injected session-probe, command-deadline, and retry-backoff timers under
 explicit test control. Mock HTTP clients disable their independent real-time deadline. Caller
 cancellation tests cancel a pending operation explicitly; synthetic transport exceptions do not
-wait for an actual network timeout.
+wait for an actual network timeout. The concurrent session-probe regression deliberately injects
+a real five-second deadline to check the original budget: capture pending-state observations,
+release the response, and await both callers before running assertions. Keep assertion work
+outside the pending window; retain task identity, exact request counts, identity, and notification
+assertions. Constrained runs can use `DOTNET_PROCESSOR_COUNT=2` and
+`DOTNET_ThreadPool_ForceMaxWorkerThreads=2` with the full unit command. A passing constrained run
+does not establish the cause of a failure in a different product suite.
 
 Use fixed timestamps for fixtures and injected clocks for timestamp/expiry assertions. The
 Azurite availability check awaits the local connection outcome rather than racing a 500 ms cutoff.

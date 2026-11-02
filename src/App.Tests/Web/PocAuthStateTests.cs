@@ -61,7 +61,9 @@ public sealed class PocAuthStateTests : TestContext
     {
         var session = Json(HttpStatusCode.OK, "{\"authenticated\":true,\"username\":\"admin\",\"roles\":[]}");
         var response = new TaskCompletionSource<HttpResponseMessage>();
-        var state = Create(true, _ => response.Task, out var requests, Timeout.InfiniteTimeSpan);
+        using var http = DelegateHttpMessageHandler.CreateRecordingClient(_ => response.Task, out var requests);
+        http.Timeout = Timeout.InfiniteTimeSpan;
+        var state = new PocAuthState(http, true, TimeSpan.FromSeconds(5), retryBackoff: TimeSpan.Zero);
         var notifications = 0;
         state.Changed += () => notifications++;
 
