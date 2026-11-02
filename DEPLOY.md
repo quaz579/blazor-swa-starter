@@ -458,7 +458,9 @@ A mismatch can reveal a skipped deployment. The JSON contains `sha`, `starter_ta
 synthetic merge-ref SHA, even though checkout/build still uses the PR merge ref.
 
 `starter-version` is a committed, single-line starter release tag. Before tagging a starter
-release, bump this file to that release's tag in the release commit. The factory copies it
+release, bump this file to that release's tag in the release commit. The Starter version CI
+guard checks format on every PR; tag pushes matching `v*` fail unless the file equals the tag name.
+The factory copies it
 with the repository at generation time and must retain that value in generated products;
 product releases must not replace it with their own version. If the factory adopts a newer
 starter baseline, copy that baseline's `starter-version` too. Missing or empty files produce
