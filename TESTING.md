@@ -111,4 +111,11 @@ Run the preview smoke subset (see `AGENTS.md`'s "how to prove your change works"
 cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke
 ```
 
+`smoke.spec.ts` also performs anonymous GETs of `/version.json` and `/`: it requires JSON
+content type, all five marker fields, `Cache-Control: no-store`, and a SHA matching the served
+HTML's `app-version` meta. This check runs in the existing preview smoke selection and in
+both local auth modes. The xunit `VersionMarkerTests` runs Node's script regressions covering
+CI/local metadata, missing/empty starter tags, unchanged source HTML, auth enablement preserving
+the anonymous route/fallback exclusion, and service-worker network-only behavior online/offline.
+
 First run on a machine needs the browser once: `cd tests && npx playwright install --with-deps chromium`.

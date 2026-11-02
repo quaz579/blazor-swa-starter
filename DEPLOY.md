@@ -440,3 +440,40 @@ Org workflow defaults are read-only. Every job declares `permissions:` explicitl
 `cd tests && npm run check:workflows` checks this explicitly.
 The e2e and e2e-poc-auth jobs run in parallel after build-test for every profile;
 the single nuc listener queues jobs when both selectors choose it.
+
+## Served build version
+
+Every deploy generates `/version.json` before publishing the web app, then uploads the
+prebuilt `artifacts/web/wwwroot`. Check the live build with:
+
+```sh
+curl -s https://<host>/version.json
+```
+
+Compare `sha` with the full `main` HEAD SHA in GitHub (or `git ls-remote origin refs/heads/main`).
+A mismatch can reveal a skipped deployment. The JSON contains `sha`, `starter_tag`, `built_at`
+(UTC ISO timestamp), `workflow_run_id`, and `run_attempt` (strings). Push deployments use
+`GITHUB_SHA`; pull-request deployments use `github.event.pull_request.head.sha`, not the
+synthetic merge-ref SHA, even though checkout/build still uses the PR merge ref.
+
+`starter-version` is a committed, single-line starter release tag. Before tagging a starter
+release, bump this file to that release's tag in the release commit. The factory copies it
+with the repository at generation time and must retain that value in generated products;
+product releases must not replace it with their own version. If the factory adopts a newer
+starter baseline, copy that baseline's `starter-version` too. Missing or empty files produce
+`unknown`; the marker does not infer a starter release from product git tags.
+
+`scripts/write-version-marker.mjs` is shared by CI and both local start scripts. Local runs
+use git HEAD (or `local` without git), `workflow_run_id: "local"`, and `run_attempt: "0"`.
+It writes ignored `wwwroot/version.json` and `.version/index.html` under `src/App.Web`;
+MSBuild serves and publishes that HTML in place of the tracked template. Stamping happens
+before publish so the service-worker asset hashes match the HTML. Local start scripts preserve
+the declared development asset cache headers so the marker retains `no-store` through the SWA
+proxy. The template's
+`app-version` meta defaults to `local` for a plain build without generation.
+
+The marker is anonymous, excluded from SPA fallback, and served with `Cache-Control: no-store`.
+Both service workers fetch it from the network without cache access. An already-cached PWA
+index can still contain an older meta tag; compare fresh HTTP responses for `/` and
+`/version.json`, as the smoke check does. An old installed service worker must update before
+it gains the new marker bypass.

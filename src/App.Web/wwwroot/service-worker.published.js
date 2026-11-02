@@ -10,6 +10,7 @@ const cacheNamePrefix = 'offline-cache-';
 const cacheName = `${cacheNamePrefix}${self.assetsManifest.version}`;
 const offlineAssetsInclude = [/\.dll$/, /\.pdb$/, /\.wasm/, /\.html/, /\.js$/, /\.json$/, /\.css$/, /\.woff$/, /\.png$/, /\.jpe?g$/, /\.gif$/, /\.ico$/, /\.blat$/, /\.dat$/];
 const offlineAssetsExclude = [
+    /^version\.json$/,
     /^service-worker\.js$/,
     // Azure Static Web Apps consumes this deployment file and serves the SPA
     // fallback at its URL, so its published hash can never match in production.
@@ -41,6 +42,9 @@ async function onActivate() {
 }
 
 async function onFetch(event) {
+    if (new URL(event.request.url).pathname === "/version.json") {
+        return fetch(event.request, { cache: "no-store" });
+    }
     let cachedResponse = null;
     if (event.request.method === 'GET') {
         // Keep API requests out of the offline cache.

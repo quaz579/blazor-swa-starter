@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./ports.env
 source "$SCRIPT_DIR/ports.env"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+node "$SCRIPT_DIR/write-version-marker.mjs"
 RUN_DIR="$REPO_ROOT/.azurite/run"
 LOG_DIR="$REPO_ROOT/.azurite/logs"
 AZURITE_DATA_DIR="$REPO_ROOT/.azurite/e2e"
@@ -96,7 +97,7 @@ if [ -n "$(listener_pid "$WEB_PORT")" ]; then
   echo "Blazor dev server already running on port $WEB_PORT, leaving it alone"
 else
   # Standalone WASM selects appsettings.E2E.json through its build property.
-  (cd "$REPO_ROOT/src/App.Web" && exec dotnet run -p:WasmApplicationEnvironmentName=E2E --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-e2e.log" 2>&1 &
+  (cd "$REPO_ROOT/src/App.Web" && EnableStaticAssetsDevelopmentCaching=true exec dotnet run -p:WasmApplicationEnvironmentName=E2E --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-e2e.log" 2>&1 &
   web_pid=$!
   record_pid "web" "$web_pid" "$WEB_PORT"
   wait_for "Blazor dev server" 60 "$LOG_DIR/web-e2e.log" http_ok "http://localhost:$WEB_PORT/"

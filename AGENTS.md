@@ -83,6 +83,12 @@ roles may touch a subscription or a repo secret, not missing tools — both are 
 
 See `LOCAL-DEV.md` and `TESTING.md` for the full context around each of these.
 
+CI and both local start scripts generate the anonymous, uncached `/version.json` marker and
+matching `app-version` HTML meta via `scripts/write-version-marker.mjs`. Keep `starter-version`
+with the copied starter baseline; release maintenance and SHA semantics live in `DEPLOY.md`.
+Generated marker/HTML files are ignored. The script regression checks run through xunit and
+require Node.js alongside .NET.
+
 ## Opt-in POC auth scaffold
 
 Inert by default: with no seed and no flag, `/api/auth/*` returns 404, the Blazor sign-in UI is
