@@ -423,8 +423,9 @@ keep its floor at `10.0.100` with `rollForward: latestFeature`, and never raise 
 newer feature bands; Oryx cannot roll backward from a higher floor.
 
 A green preview `deploy` and `smoke-preview`, including `/api/health`, gate managed Functions
-compatibility in this repo's region. Keep Oryx building both projects. Its older SDK can ship
-an older browser runtime than CI tests; prebuilding the frontend is a separate follow-up.
+compatibility in this repo's region. CI publishes the frontend itself with `dotnet publish`
+and uploads it with `skip_app_build: true`, so the version marker is stamped before the PWA asset
+hashes are computed; Oryx still builds the Functions API, so the SDK floor above applies to it.
 
 ## Optional private org-app runner profile
 
