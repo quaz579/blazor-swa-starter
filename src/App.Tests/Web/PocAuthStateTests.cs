@@ -19,6 +19,54 @@ public sealed class PocAuthStateTests : TestContext
         new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
     [Theory]
+    [InlineData("login", true)]
+    [InlineData("logout", true)]
+    [InlineData("change-password", true)]
+    [InlineData("login", false)]
+    [InlineData("logout", false)]
+    [InlineData("change-password", false)]
+    public async Task AuthOperationAsync_StaleResponse_PreservesNewerAuthState(string operation, bool newerLogin)
+    {
+        var pending = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var hold = false;
+        var state = Create(true, request => hold
+            ? pending.Task
+            : Task.FromResult(Json(HttpStatusCode.OK, "{\"username\":\"new-user\",\"roles\":[]}")), out _);
+        await state.LoginAsync("new-user", "fixture-pass1");
+        hold = true;
+        var stale = operation switch
+        {
+            "login" => state.LoginAsync("old-user", "fixture-pass1"),
+            "logout" => state.LogoutAsync(),
+            _ => ChangePasswordErrorAsync(),
+        };
+        async Task<string?> ChangePasswordErrorAsync() => (await state.ChangePasswordAsync("old-pass1", "new-pass2")).Error;
+        hold = false;
+        if (newerLogin)
+        {
+            await state.LoginAsync("new-user", "fixture-pass1");
+        }
+        else
+        {
+            await state.LogoutAsync();
+        }
+        var notifications = 0;
+        state.Changed += () => notifications++;
+
+        pending.SetResult(operation switch
+        {
+            "login" => Json(HttpStatusCode.OK, "{\"username\":\"old-user\",\"roles\":[]}"),
+            "logout" => new HttpResponseMessage(HttpStatusCode.NoContent),
+            _ => new HttpResponseMessage(HttpStatusCode.Unauthorized),
+        });
+        await stale;
+
+        state.IsSignedIn.Should().Be(newerLogin);
+        state.User?.Username.Should().Be(newerLogin ? "new-user" : null);
+        notifications.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData("{}")]
     [InlineData("null")]
     [InlineData("{\"authenticated\":null}")]
@@ -63,7 +111,7 @@ public sealed class PocAuthStateTests : TestContext
         var response = new TaskCompletionSource<HttpResponseMessage>();
         using var http = DelegateHttpMessageHandler.CreateRecordingClient(_ => response.Task, out var requests);
         http.Timeout = Timeout.InfiniteTimeSpan;
-        var state = new PocAuthState(http, true, TimeSpan.FromSeconds(5), retryBackoff: TimeSpan.Zero);
+        var state = new PocAuthState(http, true, TimeSpan.FromSeconds(5), timeProvider: new ProbeTimeProvider(), retryBackoff: TimeSpan.Zero);
         var notifications = 0;
         state.Changed += () => notifications++;
 

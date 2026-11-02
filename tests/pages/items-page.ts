@@ -1,3 +1,4 @@
+import { gotoApp } from '../helpers/app-ready';
 import { Locator, Page } from '@playwright/test';
 import { NavMenu } from './nav-menu';
 
@@ -32,7 +33,7 @@ export class ItemsPage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/items');
+    await gotoApp(this.page, '/items');
   }
 
   rowById(id: string): Locator {

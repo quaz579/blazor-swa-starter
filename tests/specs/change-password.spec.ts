@@ -1,3 +1,4 @@
+import { gotoApp } from '../helpers/app-ready';
 import { APIRequestContext, ConsoleMessage, Page, expect, test } from '@playwright/test';
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
@@ -74,7 +75,7 @@ test.describe('POC auth change password', () => {
     const problems = watchConsole(page, resourceFailure('401'));
     const user = await loginAs(page);
 
-    await page.goto('/');
+    await gotoApp(page, '/');
     await page.getByTestId('nav-change-password').click();
     await expect(page.getByTestId('change-password-page')).toBeVisible();
 
@@ -85,7 +86,7 @@ test.describe('POC auth change password', () => {
     await page.getByTestId('nav-logout').click();
     await expect(page.getByTestId('nav-login')).toBeVisible();
 
-    await page.goto('/login');
+    await gotoApp(page, '/login');
     await page.getByTestId('login-username').fill(user.username);
     await page.getByTestId('login-password').fill(user.password);
     await page.getByTestId('login-submit').click();
@@ -101,7 +102,7 @@ test.describe('POC auth change password', () => {
 
   test('the change-password page asks anonymous visitors to sign in', async ({ page }) => {
     const problems = watchConsole(page);
-    await page.goto('/change-password');
+    await gotoApp(page, '/change-password');
     await expect(page.getByTestId('change-password-signin-required')).toBeVisible();
     await expect(page.getByTestId('change-password-submit')).toHaveCount(0);
     await expectNoErrorOverlay(page);
@@ -154,7 +155,7 @@ test.describe('POC auth change password', () => {
   test('a partial revocation failure shows a warning and a 409 shows the retry guidance', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('409'));
     const user = await loginAs(page);
-    await page.goto('/change-password');
+    await gotoApp(page, '/change-password');
     await expect(page.getByText('Other devices are signed out when you change it.')).toBeVisible();
 
     await page.route('**/api/auth/change-password', (route) =>
@@ -186,7 +187,7 @@ test.describe('POC auth change password', () => {
   for (const kind of ['missing', 'unreadable']) {
     test(`a ${kind} password-change warning reports unconfirmed revocation`, async ({ page }) => {
       const user = await loginAs(page);
-      await page.goto('/change-password');
+      await gotoApp(page, '/change-password');
       await page.route('**/api/auth/change-password', (route) => kind === 'missing'
         ? route.fulfill({ json: {} })
         : route.fulfill({ status: 200, contentType: 'text/html', body: '<html>unreadable response' }));
@@ -203,7 +204,7 @@ test.describe('POC auth change password', () => {
   test('a wrong current password and a weak new password are refused with 400 and a visible message', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('400'));
     const user = await loginAs(page);
-    await page.goto('/change-password');
+    await gotoApp(page, '/change-password');
 
     await fillAndSubmit(page, `${user.password}-wrong`, NEW_PASSWORD);
     await expect(page.getByTestId('change-password-error')).toContainText('current password');
@@ -223,7 +224,7 @@ test.describe('POC auth change password', () => {
   test('a server fault, a malformed body, and an aborted request leave the page usable', async ({ page }) => {
     const problems = watchConsole(page, resourceFailure('400|401|500'), /net::ERR_CONNECTION_RESET/);
     const user = await loginAs(page);
-    await page.goto('/change-password');
+    await gotoApp(page, '/change-password');
 
     await page.route('**/api/auth/change-password', (route) =>
       route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Simulated storage failure' }) }));

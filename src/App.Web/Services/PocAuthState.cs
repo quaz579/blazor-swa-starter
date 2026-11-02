@@ -145,6 +145,7 @@ public sealed class PocAuthState
 
     public async Task<string?> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
     {
+        var revision = ++_revision;
         using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
@@ -176,7 +177,10 @@ public sealed class PocAuthState
                 return "Sign-in failed: the API returned an unexpected response.";
             }
 
-            SetUser(user);
+            if (revision == _revision)
+            {
+                SetUser(user);
+            }
             return null;
         }
         catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)
@@ -187,6 +191,7 @@ public sealed class PocAuthState
 
     public async Task<PasswordChangeResult> ChangePasswordAsync(string currentPassword, string newPassword, CancellationToken cancellationToken = default)
     {
+        var revision = ++_revision;
         using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
@@ -199,7 +204,10 @@ public sealed class PocAuthState
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
-                SetUser(null);
+                if (revision == _revision)
+                {
+                    SetUser(null);
+                }
                 return new("Your session has expired. Sign in again.", null);
             }
 
@@ -223,6 +231,7 @@ public sealed class PocAuthState
 
     public async Task<string?> LogoutAsync(CancellationToken cancellationToken = default)
     {
+        var revision = ++_revision;
         using var deadline = new CancellationTokenSource(CommandTimeout, _timeProvider);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
@@ -233,7 +242,10 @@ public sealed class PocAuthState
                 return $"Sign-out failed with status {(int)response.StatusCode}. Try again.";
             }
 
-            SetUser(null);
+            if (revision == _revision)
+            {
+                SetUser(null);
+            }
             return null;
         }
         catch (Exception ex) when ((ex is HttpRequestException or OperationCanceledException) && !cancellationToken.IsCancellationRequested)

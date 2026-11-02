@@ -38,7 +38,7 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public void SignedOut_ShowsASignInPromptInsteadOfTheForm()
+    public void Render_SignedOut_ShowsASignInPromptInsteadOfTheForm()
     {
         Register(req => Route(req, new HttpResponseMessage(HttpStatusCode.NoContent), signedIn: false), out _);
 
@@ -64,7 +64,7 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public async Task MismatchedConfirmation_ShowsAnErrorWithoutCallingTheApi()
+    public async Task Submit_MismatchedConfirmation_ShowsAnErrorWithoutCallingTheApi()
     {
         Register(req => Route(req, new HttpResponseMessage(HttpStatusCode.NoContent)), out var requests);
         var cut = RenderComponent<ChangePassword>();
@@ -78,7 +78,7 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public async Task ServerRejection_ShowsTheServerMessageAndKeepsTheFormUsable()
+    public async Task Submit_ServerRejection_ShowsTheServerMessageAndKeepsTheFormUsable()
     {
         Register(req => Route(req, Json(HttpStatusCode.BadRequest, "{\"error\":\"The current password is incorrect.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();
@@ -92,7 +92,7 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public async Task RevocationWarning_ShowsAWarningInsteadOfTheOtherDevicesPromise()
+    public async Task Submit_RevocationWarning_ShowsAWarningInsteadOfTheOtherDevicesPromise()
     {
         Register(req => Route(req, Json(HttpStatusCode.OK, "{\"warning\":\"Password changed, but other devices could not be signed out.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();
@@ -107,7 +107,7 @@ public sealed class ChangePasswordPageTests : TestContext
     }
 
     [Fact]
-    public async Task Conflict_ShowsTheServerMessageAndKeepsTheFormUsable()
+    public async Task Submit_Conflict_ShowsTheServerMessageAndKeepsTheFormUsable()
     {
         Register(req => Route(req, Json(HttpStatusCode.Conflict, "{\"error\":\"The password was changed by another request. Enter the new current password and try again.\"}")), out _);
         var cut = RenderComponent<ChangePassword>();

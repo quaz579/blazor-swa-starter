@@ -1,3 +1,4 @@
+import { gotoApp } from '../helpers/app-ready';
 import { Page, expect, test } from '@playwright/test';
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
@@ -62,7 +63,7 @@ test.describe('POC auth', () => {
     page.on('pageerror', (error) => problems.push(String(error)));
 
     for (const path of ['/', '/login', '/change-password']) {
-      await page.goto(path);
+      await gotoApp(page, path);
       await expect(page.getByTestId('nav-login')).toBeVisible();
     }
 
@@ -72,19 +73,19 @@ test.describe('POC auth', () => {
   test('a session created through the loginAs API helper shows the UI signed in after a reload', { tag: '@prod' }, async ({ page }) => {
     const user = await loginAs(page);
 
-    await page.goto('/');
+    await gotoApp(page, '/');
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
     await page.reload();
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
 
-    await page.goto('/change-password');
+    await gotoApp(page, '/change-password');
     await expect(page.getByTestId('nav-user')).toHaveText(user.username);
     await expect(page.getByTestId('nav-login')).toHaveCount(0);
   });
 
   test('signing in through the login page shows the user in the nav', { tag: '@prod' }, async ({ page }) => {
     const user = pocUser();
-    await page.goto('/login');
+    await gotoApp(page, '/login');
     await page.getByTestId('login-username').fill(user.username);
     await page.getByTestId('login-password').fill(user.password);
     await page.getByTestId('login-submit').click();
@@ -102,7 +103,7 @@ test.describe('POC auth', () => {
   ]) {
     test(`an invalid successful login with ${invalid.name} stays signed out and shows an error`, async ({ page }) => {
       await page.route('**/api/auth/login', (route) => route.fulfill({ json: invalid.body }));
-      await page.goto('/login');
+      await gotoApp(page, '/login');
       await page.getByTestId('login-username').fill('fixture-user');
       await page.getByTestId('login-password').fill('fixture-pass1');
       await page.getByTestId('login-submit').click();
@@ -158,7 +159,7 @@ test.describe('POC auth', () => {
           ? route.fulfill({ status: 503 })
           : route.fulfill({ json: { authenticated: true, username: user.username, roles: user.roles } });
       });
-      await page.goto(path);
+      await gotoApp(page, path);
       const failure = page.getByTestId('auth-probe-failed');
       await expect(failure.first()).toContainText("Couldn't check sign-in");
       await expect(page.getByTestId('nav-login')).toHaveCount(0);
@@ -180,7 +181,7 @@ test.describe('POC auth', () => {
   for (const failure of ['server', 'network']) {
     test(`a ${failure} logout failure preserves the signed-in UI and offers retry`, async ({ page }) => {
       const user = await loginAs(page);
-      await page.goto('/');
+      await gotoApp(page, '/');
       await expect(page.getByTestId('nav-user')).toHaveText(user.username);
       await page.route('**/api/auth/logout', (route) => failure === 'server'
         ? route.fulfill({ status: 500 })
@@ -227,7 +228,7 @@ test.describe('POC auth', () => {
 
   test('a wrong password on the login page shows an error and keeps the page usable', { tag: '@prod' }, async ({ page }) => {
     const user = pocUser();
-    await page.goto('/login');
+    await gotoApp(page, '/login');
     await page.getByTestId('login-username').fill(user.username);
     await page.getByTestId('login-password').fill('not-the-password');
     await page.getByTestId('login-submit').click();

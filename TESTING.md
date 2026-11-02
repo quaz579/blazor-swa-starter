@@ -47,10 +47,10 @@ bUnit `WaitForState`/`WaitForAssertion` deadlines, or elapsed-time assertions as
 `ProbeTimeProvider` fires injected session-probe, command-deadline, and retry-backoff timers under
 explicit test control. Mock HTTP clients disable their independent real-time deadline. Caller
 cancellation tests cancel a pending operation explicitly; synthetic transport exceptions do not
-wait for an actual network timeout. The concurrent session-probe regression deliberately injects
-a real five-second deadline to check the original budget: capture pending-state observations,
-release the response, and await both callers before running assertions. Keep assertion work
-outside the pending window; retain task identity, exact request counts, identity, and notification
+wait for an actual network timeout. The concurrent session-probe regression injects
+a controlled five-second deadline to preserve the original scenario: capture pending-state
+observations, release the response, and await both callers before running assertions. Keep
+assertion work outside the pending window; retain task identity, exact request counts, identity, and notification
 assertions. Constrained runs can use `DOTNET_PROCESSOR_COUNT=2` and
 `DOTNET_ThreadPool_ForceMaxWorkerThreads=2` with the full unit command. A passing constrained run
 does not establish the cause of a failure in a different product suite.
@@ -59,9 +59,11 @@ Use fixed timestamps for fixtures and injected clocks for timestamp/expiry asser
 Azurite availability check awaits the local connection outcome rather than racing a 500 ms cutoff.
 Real emulator integration tests still depend on the emulator's network and storage operations.
 
-Browser tests await observable UI/network completion. Deferred session probes freeze browser time
-so a deliberately held request cannot accidentally expire while the test drives the UI. Advance
-virtual time while awaiting WASM continuations; navigation exposes its pending initialization with
+Browser tests await observable UI/network completion. `gotoApp` waits for the rendered
+`#app main` element before actions begin; document load alone does not mean WASM has booted.
+Its 60-second watchdog bounds bootstrap, while the normal action budget applies after readiness.
+Deferred session probes freeze browser time so a deliberately held request cannot accidentally
+expire while the test drives the UI. Advance virtual time while awaiting WASM continuations; navigation exposes its pending initialization with
 `aria-busy`, so stale-probe checks await actual completion before asserting identity. Register
 network waiters before releasing route gates and release gates in cleanup. Playwright's test,
 action, navigation, and assertion budgets remain failure watchdogs for external browser/server
