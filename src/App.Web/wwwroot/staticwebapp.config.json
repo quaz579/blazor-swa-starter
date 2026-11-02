@@ -4,6 +4,12 @@
   },
   "routes": [
     {
+      "route": "/version.json",
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    },
+    {
       "route": "/index.html",
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate"
@@ -23,6 +29,7 @@
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": [
+      "/version.json",
       "/images/*.{png,jpg,gif}",
       "/css/*",
       "/api/*"

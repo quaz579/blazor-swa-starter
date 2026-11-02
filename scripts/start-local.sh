@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./ports.env
 source "$SCRIPT_DIR/ports.env"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+node "$SCRIPT_DIR/write-version-marker.mjs"
 RUN_DIR="$REPO_ROOT/.azurite/run"
 LOG_DIR="$REPO_ROOT/.azurite/logs"
 AZURITE_DATA_DIR="$REPO_ROOT/.azurite/local"
@@ -93,7 +94,7 @@ fi
 if [ -n "$(listener_pid "$WEB_PORT")" ]; then
   echo "Blazor dev server already running on port $WEB_PORT, leaving it alone"
 else
-  (cd "$REPO_ROOT/src/App.Web" && exec dotnet run --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-local.log" 2>&1 &
+  (cd "$REPO_ROOT/src/App.Web" && EnableStaticAssetsDevelopmentCaching=true exec dotnet run --urls "http://localhost:$WEB_PORT") > "$LOG_DIR/web-local.log" 2>&1 &
   web_pid=$!
   record_pid "web" "$web_pid" "$WEB_PORT"
   wait_for "Blazor dev server" 60 "$LOG_DIR/web-local.log" http_ok "http://localhost:$WEB_PORT/"
