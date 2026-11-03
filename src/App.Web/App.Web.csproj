@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Remove="wwwroot/version.json" />
     <StaticWebAssetContentTypeMapping Include="application/json" Pattern="version.json" Cache="no-store" Priority="0" />
   </ItemGroup>
 
@@ -29,5 +30,9 @@
   <ItemGroup>
     <ProjectReference Include="..\App.Core\App.Core.csproj" />
   </ItemGroup>
+
+  <Target Name="CleanVersionMarker" AfterTargets="Clean">
+    <RemoveDir Directories="$(MSBuildProjectDirectory)/obj/version-marker" />
+  </Target>
 
 </Project>

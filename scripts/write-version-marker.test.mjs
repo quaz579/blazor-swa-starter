@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -32,6 +32,20 @@ test('WriteVersionMarker_CiMetadata_StampsMatchingHtmlAndJson', () => fixture(di
   assert.deepEqual(JSON.parse(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/version.json'), 'utf8')), marker);
   assert.match(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/index.html'), 'utf8'), new RegExp(`content="${marker.sha}"`));
   assert.equal(readFileSync(resolve(dir, 'src/App.Web/wwwroot/index.html'), 'utf8'), read('src/App.Web/wwwroot/index.html'));
+}));
+
+test('WriteVersionMarker_LegacyOutputs_RemovesOldMarkersAndPreservesOtherAssets', () => fixture(dir => {
+  const web = resolve(dir, 'src/App.Web');
+  mkdirSync(resolve(web, '.version'), { recursive: true });
+  writeFileSync(resolve(web, '.version/index.html'), 'legacy host');
+  writeFileSync(resolve(web, 'wwwroot/version.json'), '{"sha":"legacy"}');
+  writeFileSync(resolve(web, 'wwwroot/other.json'), '{"keep":true}');
+  const marker = writeVersionMarker(dir, { VERSION_SHA: 'b'.repeat(40) });
+  assert.equal(existsSync(resolve(web, 'wwwroot/version.json')), false);
+  assert.equal(existsSync(resolve(web, '.version')), false);
+  assert.equal(readFileSync(resolve(web, 'wwwroot/other.json'), 'utf8'), '{"keep":true}');
+  assert.deepEqual(JSON.parse(readFileSync(resolve(web, 'obj/version-marker/version.json'), 'utf8')), marker);
+  assert.doesNotThrow(() => writeVersionMarker(dir, { VERSION_SHA: 'b'.repeat(40) }));
 }));
 
 test('WriteVersionMarker_LocalCheckout_UsesHeadAndLocalRun', () => fixture(dir => {

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +38,8 @@ export function writeVersionMarker(root, env = process.env) {
   const template = readFileSync(resolve(web, 'wwwroot/index.html'), 'utf8');
   const meta = /<meta name="app-version" content="[^"]*" \/>/;
   if (!meta.test(template)) throw new Error('Missing app-version meta placeholder');
+  rmSync(resolve(web, 'wwwroot/version.json'), { force: true });
+  rmSync(resolve(web, '.version'), { recursive: true, force: true });
   mkdirSync(resolve(web, 'obj/version-marker'), { recursive: true });
   writeFileSync(resolve(web, 'obj/version-marker/index.html'), template.replace(meta, `<meta name="app-version" content="${sha}" />`));
   writeFileSync(resolve(web, 'obj/version-marker/version.json'), `${JSON.stringify(marker)}\n`);
