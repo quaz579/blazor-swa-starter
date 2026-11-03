@@ -91,6 +91,7 @@ resource "azurerm_static_web_app" "main" {
   # work at all — without them the live site's /api/items fails even though local
   # dev against Azurite (which the API resolves separately) succeeds.
   app_settings = {
+    APP_ENVIRONMENT                       = var.app_environment
     AZURE_STORAGE_CONNECTION_STRING       = azurerm_storage_account.main.primary_connection_string
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
