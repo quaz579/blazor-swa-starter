@@ -96,6 +96,3 @@ Desktop.ini
 .desloppify/progression.jsonl*
 .desloppify/scorecard*
 /scorecard.png
-
-src/App.Web/wwwroot/version.json
-src/App.Web/.version/

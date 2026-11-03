@@ -16,9 +16,10 @@
     <StaticWebAssetContentTypeMapping Include="application/json" Pattern="version.json" Cache="no-store" Priority="0" />
   </ItemGroup>
 
-  <ItemGroup Condition="Exists('.version/index.html')">
+  <ItemGroup Condition="Exists('obj/version-marker/index.html')">
     <Content Remove="wwwroot/index.html" />
-    <Content Include=".version/index.html" Link="wwwroot/index.html" TargetPath="wwwroot/index.html" ContentRoot="$(MSBuildProjectDirectory)/.version/" />
+    <Content Include="obj/version-marker/index.html" Link="wwwroot/index.html" TargetPath="wwwroot/index.html" ContentRoot="$(MSBuildProjectDirectory)/obj/version-marker/" />
+    <Content Include="obj/version-marker/version.json" Link="wwwroot/version.json" TargetPath="wwwroot/version.json" ContentRoot="$(MSBuildProjectDirectory)/obj/version-marker/" />
   </ItemGroup>
 
   <ItemGroup>

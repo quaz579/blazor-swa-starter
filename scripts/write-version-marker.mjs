@@ -13,6 +13,14 @@ export function writeVersionMarker(root, env = process.env) {
     }
   }
   if (!/^(?:[a-f0-9]{40}|local)$/.test(sha)) throw new Error('Expected a full commit SHA or local');
+  let builtAt = '1970-01-01T00:00:00.000Z';
+  if (env.VERSION_SHA) {
+    builtAt = new Date().toISOString();
+  } else {
+    try {
+      builtAt = new Date(execFileSync('git', ['log', '-1', '--format=%cI'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()).toISOString();
+    } catch {}
+  }
   let starterTag = 'unknown';
   try {
     starterTag = readFileSync(resolve(root, 'starter-version'), 'utf8').trim() || 'unknown';
@@ -22,7 +30,7 @@ export function writeVersionMarker(root, env = process.env) {
   const marker = {
     sha,
     starter_tag: starterTag,
-    built_at: new Date().toISOString(),
+    built_at: builtAt,
     workflow_run_id: env.VERSION_SHA ? (env.GITHUB_RUN_ID || 'local') : 'local',
     run_attempt: env.VERSION_SHA ? (env.GITHUB_RUN_ATTEMPT || '0') : '0',
   };
@@ -30,9 +38,9 @@ export function writeVersionMarker(root, env = process.env) {
   const template = readFileSync(resolve(web, 'wwwroot/index.html'), 'utf8');
   const meta = /<meta name="app-version" content="[^"]*" \/>/;
   if (!meta.test(template)) throw new Error('Missing app-version meta placeholder');
-  mkdirSync(resolve(web, '.version'), { recursive: true });
-  writeFileSync(resolve(web, '.version/index.html'), template.replace(meta, `<meta name="app-version" content="${sha}" />`));
-  writeFileSync(resolve(web, 'wwwroot/version.json'), `${JSON.stringify(marker)}\n`);
+  mkdirSync(resolve(web, 'obj/version-marker'), { recursive: true });
+  writeFileSync(resolve(web, 'obj/version-marker/index.html'), template.replace(meta, `<meta name="app-version" content="${sha}" />`));
+  writeFileSync(resolve(web, 'obj/version-marker/version.json'), `${JSON.stringify(marker)}\n`);
   return marker;
 }
 

@@ -29,21 +29,27 @@ test('WriteVersionMarker_CiMetadata_StampsMatchingHtmlAndJson', () => fixture(di
     sha: 'a'.repeat(40), starter_tag: 'v0.1.12', built_at: marker.built_at, workflow_run_id: '123', run_attempt: '2',
   });
   assert.equal(new Date(marker.built_at).toISOString(), marker.built_at);
-  assert.deepEqual(JSON.parse(readFileSync(resolve(dir, 'src/App.Web/wwwroot/version.json'), 'utf8')), marker);
-  assert.match(readFileSync(resolve(dir, 'src/App.Web/.version/index.html'), 'utf8'), new RegExp(`content="${marker.sha}"`));
+  assert.deepEqual(JSON.parse(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/version.json'), 'utf8')), marker);
+  assert.match(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/index.html'), 'utf8'), new RegExp(`content="${marker.sha}"`));
   assert.equal(readFileSync(resolve(dir, 'src/App.Web/wwwroot/index.html'), 'utf8'), read('src/App.Web/wwwroot/index.html'));
 }));
 
 test('WriteVersionMarker_LocalCheckout_UsesHeadAndLocalRun', () => fixture(dir => {
   const marker = writeVersionMarker(dir, {});
   assert.equal(marker.sha, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim());
+  assert.equal(marker.built_at, new Date(execFileSync('git', ['log', '-1', '--format=%cI'], { cwd: root, encoding: 'utf8' }).trim()).toISOString());
+  const firstJson = readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/version.json'), 'utf8');
+  assert.deepEqual(writeVersionMarker(dir, {}), marker);
+  assert.equal(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/version.json'), 'utf8'), firstJson);
   assert.equal(marker.workflow_run_id, 'local');
   assert.equal(marker.run_attempt, '0');
   assert.equal(marker.starter_tag, 'unknown');
   writeFileSync(resolve(dir, 'starter-version'), ' \n');
   assert.equal(writeVersionMarker(dir, {}).starter_tag, 'unknown');
   writeFileSync(resolve(dir, '.git'), 'gitdir: missing\n');
-  assert.equal(writeVersionMarker(dir, {}).sha, 'local');
+  const fallback = writeVersionMarker(dir, {});
+  assert.equal(fallback.sha, 'local');
+  assert.equal(fallback.built_at, '1970-01-01T00:00:00.000Z');
 }));
 
 test('EnablePocAuth_VersionRoute_PreservesAnonymousNoStoreAndFallbackExclusion', () => fixture(dir => {

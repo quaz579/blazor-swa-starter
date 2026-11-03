@@ -468,9 +468,13 @@ starter baseline, copy that baseline's `starter-version` too. Missing or empty f
 
 `scripts/write-version-marker.mjs` is shared by CI and both local start scripts. Local runs
 use git HEAD (or `local` without git), `workflow_run_id: "local"`, and `run_attempt: "0"`.
-It writes ignored `wwwroot/version.json` and `.version/index.html` under `src/App.Web`;
-MSBuild serves and publishes that HTML in place of the tracked template. Stamping happens
-before publish so the service-worker asset hashes match the HTML. Local start scripts preserve
+Without `VERSION_SHA`, `built_at` is the HEAD commit time from `git log -1 --format=%cI`,
+or the fixed `1970-01-01T00:00:00.000Z` when git is unavailable. CI sets `VERSION_SHA` and
+keeps the real build time. The script writes ignored `index.html` and `version.json` under
+`src/App.Web/obj/version-marker/`, keeping generated output outside the factory receipt inputs.
+MSBuild serves and publishes both files as `/index.html` and `/version.json`, replacing the
+tracked HTML template. Stamping happens before publish so the service-worker asset hashes match
+the HTML. Local start scripts preserve
 the declared development asset cache headers so the marker retains `no-store` through the SWA
 proxy. The template's
 `app-version` meta defaults to `local` for a plain build without generation.
