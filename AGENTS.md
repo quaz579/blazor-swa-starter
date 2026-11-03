@@ -104,8 +104,9 @@ environments inherit production app settings, so they also report production run
 This convention does not change existing behavior, including the opt-in POC auth scaffold.
 
 The Blazor WebAssembly client never reads or invents its own mode setting; when the UI needs the
-runtime mode, it gets it from an API response backed by `AppEnvironment`. Seed demo/fixture data at
-host startup, never lazily on first request.
+runtime mode, it gets it from an API response backed by `AppEnvironment`. Seed demo/business data at
+host startup, never lazily on first request. POC auth users are the one exception: the factory's
+test reset spares the auth tables.
 
 ## Opt-in POC auth scaffold
 
