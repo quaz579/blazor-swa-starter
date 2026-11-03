@@ -103,6 +103,10 @@ The factory sets Terraform `app_environment = "production"` at provisioning; its
 environments inherit production app settings, so they also report production runtime mode.
 This convention does not change existing behavior, including the opt-in POC auth scaffold.
 
+The Blazor WebAssembly client never reads or invents its own mode setting; when the UI needs the
+runtime mode, it gets it from an API response backed by `AppEnvironment`. Seed demo/fixture data at
+host startup, never lazily on first request.
+
 ## Opt-in POC auth scaffold
 
 Inert by default: with no seed and no flag, `/api/auth/*` returns 404, the Blazor sign-in UI is
