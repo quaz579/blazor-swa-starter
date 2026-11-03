@@ -25,6 +25,17 @@ variable "environment" {
   }
 }
 
+variable "app_environment" {
+  description = "Sets the runtime APP_ENVIRONMENT app setting. Separate from environment, which only names resources."
+  type        = string
+  default     = "development"
+
+  validation {
+    condition     = contains(["development", "production"], var.app_environment)
+    error_message = "app_environment must be exactly development or production."
+  }
+}
+
 variable "location" {
   description = "Azure region for the resource group, storage, and telemetry. Independent of the Static Web App region."
   type        = string

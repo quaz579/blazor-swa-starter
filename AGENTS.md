@@ -89,6 +89,20 @@ with the copied starter baseline; release maintenance and SHA semantics live in 
 Generated marker/HTML files are ignored. The script regression checks run through xunit and
 require Node.js alongside .NET.
 
+## Runtime mode convention
+
+Products read runtime mode only through `App.Api.AppEnvironment.Current` (`"development"` or
+`"production"`) and `AppEnvironment.IsProduction`; never invent per-app setting names such as
+`<APP>_ENVIRONMENT`. The helper reads only `APP_ENVIRONMENT`, trims whitespace and lowercases
+it: exactly `"production"` means production; unset, empty, whitespace, and every other value
+(including `"prod"`, `"staging"`, and `"development"`) mean development. There is no fallback to
+`AZURE_FUNCTIONS_ENVIRONMENT`, `DOTNET_ENVIRONMENT`, or `ASPNETCORE_ENVIRONMENT`.
+
+The factory sets Terraform `app_environment = "production"` at provisioning; its default is
+`"development"`. The existing `environment` variable only names resources. SWA PR preview
+environments inherit production app settings, so they also report production runtime mode.
+This convention does not change existing behavior, including the opt-in POC auth scaffold.
+
 ## Opt-in POC auth scaffold
 
 Inert by default: with no seed and no flag, `/api/auth/*` returns 404, the Blazor sign-in UI is

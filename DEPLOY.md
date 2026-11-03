@@ -30,6 +30,12 @@ location          = "eastus2"
 swa_location      = "centralus"
 ```
 
+`app_environment` sets the runtime `APP_ENVIRONMENT` app setting. It defaults to
+`"development"` and accepts exactly `"development"` or `"production"`; the factory sets
+`app_environment = "production"` when provisioning products. It is separate from `environment`,
+which only names resources. Products read runtime mode through `AppEnvironment` as described
+in `AGENTS.md`.
+
 `location` keeps the resource group, storage, and telemetry in East US 2; `swa_location`
 independently selects Central US for the SWA and its managed Functions API. Changing the
 SWA region replaces the SWA, changes its randomly generated hostname and deployment token,
@@ -86,7 +92,8 @@ block a deploy.
 
 A pull request gets its own Static Web Apps preview slot, deployed by the same `deploy` job.
 **A preview environment inherits the production Static Web App's app settings — including the
-production storage connection string.** It is not an isolated sandbox; only tests in
+production storage connection string and `APP_ENVIRONMENT`.** Factory-provisioned PR previews
+therefore also report production runtime mode through `AppEnvironment`. It is not an isolated sandbox; only tests in
 `tests/specs/smoke.spec.ts` selected with `--grep @smoke` may run against one, which is what
 `smoke-preview` does. Closing the PR runs `.github/workflows/pr-cleanup.yml`, which tears the
 preview slot down.

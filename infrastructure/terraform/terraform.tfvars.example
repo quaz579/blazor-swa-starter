@@ -6,10 +6,11 @@
 
 subscription_id = "00000000-0000-0000-0000-000000000000"
 
-project_name = "swapp"
-location     = "eastus2"
-swa_location = "centralus"
-environment  = "dev"
+project_name    = "swapp"
+location        = "eastus2"
+swa_location    = "centralus"
+environment     = "dev"
+app_environment = "development"
 
 github_owner      = "your-github-org-or-user"
 github_repository = "your-repo-name"
