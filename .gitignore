@@ -44,6 +44,8 @@ yarn-debug.log*
 yarn-error.log*
 
 ## Blazor
+src/App.Web/wwwroot/version.json
+src/App.Web/.version/
 wwwroot/service-worker-assets.js
 
 ## Terraform / OpenTofu
@@ -96,6 +98,3 @@ Desktop.ini
 .desloppify/progression.jsonl*
 .desloppify/scorecard*
 /scorecard.png
-
-src/App.Web/wwwroot/version.json
-src/App.Web/.version/
