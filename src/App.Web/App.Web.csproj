@@ -41,6 +41,7 @@
         Generated = false;
         try
         {
+          if ((System.IO.File.GetAttributes(Path) & System.IO.FileAttributes.ReparsePoint) != 0) return true;
           var json = System.Reflection.Assembly.Load("System.Text.Json");
           var documentType = json.GetType("System.Text.Json.JsonDocument");
           var optionsType = json.GetType("System.Text.Json.JsonDocumentOptions");

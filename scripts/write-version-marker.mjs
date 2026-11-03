@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +14,7 @@ function isTracked(root, path) {
 
 function isLegacyJson(path) {
   try {
+    if (!lstatSync(path).isFile()) return false;
     const value = JSON.parse(readFileSync(path, 'utf8'));
     return value !== null && !Array.isArray(value) && typeof value === 'object'
       && Object.keys(value).sort().join(',') === 'built_at,run_attempt,sha,starter_tag,workflow_run_id'
@@ -65,13 +66,15 @@ export function writeVersionMarker(root, env = process.env) {
   }
   const legacyDir = resolve(web, '.version');
   const legacyIndex = resolve(legacyDir, 'index.html');
-  if (existsSync(legacyIndex) && !isTracked(root, legacyIndex)
-      && /<meta name="app-version" content="(?:[a-f0-9]{40}|local)" \/>/.test(readFileSync(legacyIndex, 'utf8'))) {
-    rmSync(legacyIndex);
-  }
   if (existsSync(legacyDir)) {
-    if (readdirSync(legacyDir).length === 0) rmdirSync(legacyDir);
-    else console.error(`Warning: preserving remaining user files in ${legacyDir}.`);
+    if (lstatSync(legacyDir).isDirectory()) {
+      if (existsSync(legacyIndex) && lstatSync(legacyIndex).isFile() && !isTracked(root, legacyIndex)
+          && /<meta name="app-version" content="(?:[a-f0-9]{40}|local)" \/>/.test(readFileSync(legacyIndex, 'utf8'))) {
+        rmSync(legacyIndex);
+      }
+      if (readdirSync(legacyDir).length === 0) rmdirSync(legacyDir);
+      else console.error(`Warning: preserving remaining user files in ${legacyDir}.`);
+    } else console.error(`Warning: preserving ${legacyDir}; it is not a generated legacy directory.`);
   }
   mkdirSync(resolve(web, 'obj/version-marker'), { recursive: true });
   writeFileSync(resolve(web, 'obj/version-marker/index.html'), template.replace(meta, `<meta name="app-version" content="${sha}" />`));

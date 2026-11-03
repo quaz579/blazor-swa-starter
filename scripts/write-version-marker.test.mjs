@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync, symlinkSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -75,6 +75,32 @@ test('WriteVersionMarker_UserIndex_PreservesAndWarns', () => fixture(dir => {
   assert.match(warnings(() => writeVersionMarker(dir, {})), /remaining user files/);
   assert.equal(readFileSync(resolve(folder, 'index.html'), 'utf8'), 'user host');
 }));
+
+for (const kind of ['json', 'directory', 'index']) {
+  test(`WriteVersionMarker_Symlink_${kind}_PreservesLinkAndTargetAndWarns`, () => fixture(dir => {
+    const web = resolve(dir, 'src/App.Web');
+    const outside = resolve(dir, 'user-files');
+    mkdirSync(outside);
+    const target = resolve(outside, kind === 'json' ? 'version.json' : 'index.html');
+    const content = kind === 'json' ? JSON.stringify(legacyMarker) : '<meta name="app-version" content="local" />';
+    writeFileSync(target, content);
+    let link;
+    if (kind === 'directory') {
+      link = resolve(web, '.version');
+      symlinkSync(outside, link, 'dir');
+    } else if (kind === 'index') {
+      mkdirSync(resolve(web, '.version'));
+      link = resolve(web, '.version/index.html');
+      symlinkSync(target, link);
+    } else {
+      link = resolve(web, 'wwwroot/version.json');
+      symlinkSync(target, link);
+    }
+    assert.match(warnings(() => writeVersionMarker(dir, {})), /Warning: preserving/);
+    assert.equal(existsSync(link), true);
+    assert.equal(readFileSync(target, 'utf8'), content);
+  }));
+}
 
 test('WriteVersionMarker_CiMetadata_StampsMatchingHtmlAndJson', () => fixture(dir => {
   writeFileSync(resolve(dir, 'starter-version'), 'v0.1.12\n');
