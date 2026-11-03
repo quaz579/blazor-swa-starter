@@ -13,7 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Remove="wwwroot/version.json" />
     <StaticWebAssetContentTypeMapping Include="application/json" Pattern="version.json" Cache="no-store" Priority="0" />
   </ItemGroup>
 
@@ -30,6 +29,62 @@
   <ItemGroup>
     <ProjectReference Include="..\App.Core\App.Core.csproj" />
   </ItemGroup>
+
+  <UsingTask TaskName="IdentifyLegacyVersionMarker" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Path ParameterType="System.String" Required="true" />
+      <Generated ParameterType="System.Boolean" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.Linq" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        Generated = false;
+        try
+        {
+          var json = System.Reflection.Assembly.Load("System.Text.Json");
+          var documentType = json.GetType("System.Text.Json.JsonDocument");
+          var optionsType = json.GetType("System.Text.Json.JsonDocumentOptions");
+          using (var document = (System.IDisposable)documentType.GetMethod("Parse", new[] { typeof(string), optionsType }).Invoke(null, new[] { System.IO.File.ReadAllText(Path), System.Activator.CreateInstance(optionsType) }))
+          {
+            var value = documentType.GetProperty("RootElement").GetValue(document);
+            var elementType = value.GetType();
+            if (elementType.GetProperty("ValueKind").GetValue(value).ToString() == "Object")
+            {
+              var properties = (System.Collections.IEnumerable)elementType.GetMethod("EnumerateObject").Invoke(value, null);
+              var keys = properties.Cast<object>().Select(p => (string)p.GetType().GetProperty("Name").GetValue(p)).Distinct().OrderBy(n => n);
+              var sha = elementType.GetMethod("GetProperty", new[] { typeof(string) }).Invoke(value, new object[] { "sha" });
+              Generated = keys.SequenceEqual(new[] { "built_at", "run_attempt", "sha", "starter_tag", "workflow_run_id" })
+                && elementType.GetProperty("ValueKind").GetValue(sha).ToString() == "String"
+                && System.Text.RegularExpressions.Regex.IsMatch((string)elementType.GetMethod("GetString").Invoke(sha, null), @"\A(?:[a-f0-9]{40}|local)\z");
+            }
+          }
+          if (Generated)
+          {
+            using (var git = new System.Diagnostics.Process())
+            {
+              git.StartInfo = new System.Diagnostics.ProcessStartInfo("git") { WorkingDirectory = System.IO.Path.GetDirectoryName(Path), UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+              git.StartInfo.Arguments = "ls-files --error-unmatch -- version.json";
+              git.Start();
+              git.WaitForExit();
+              Generated = git.ExitCode != 0;
+            }
+          }
+        }
+        catch { Generated = false; }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="ResolveLegacyVersionMarker" BeforeTargets="AssignTargetPaths" Condition="Exists('wwwroot/version.json')">
+    <IdentifyLegacyVersionMarker Path="$(MSBuildProjectDirectory)/wwwroot/version.json">
+      <Output TaskParameter="Generated" PropertyName="LegacyVersionMarkerGenerated" />
+    </IdentifyLegacyVersionMarker>
+    <Error Condition="'$(LegacyVersionMarkerGenerated)' != 'true' and Exists('obj/version-marker/index.html')"
+           Text="User file wwwroot/version.json conflicts with generated obj/version-marker/version.json. Rename or remove wwwroot/version.json, or remove obj/version-marker to serve the user file." />
+    <ItemGroup Condition="'$(LegacyVersionMarkerGenerated)' == 'true'">
+      <Content Remove="wwwroot/version.json" />
+    </ItemGroup>
+  </Target>
 
   <Target Name="CleanVersionMarker" AfterTargets="Clean">
     <RemoveDir Directories="$(MSBuildProjectDirectory)/obj/version-marker" />

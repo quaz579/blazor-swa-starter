@@ -22,6 +22,60 @@ function fixture(action) {
   }
 }
 
+const legacyMarker = { sha: 'a'.repeat(40), starter_tag: 'v0.1.13', built_at: 'old', workflow_run_id: 'local', run_attempt: '0' };
+
+function warnings(action) {
+  const output = [];
+  const original = console.error;
+  console.error = message => output.push(message);
+  try { action(); } finally { console.error = original; }
+  return output.join('\n');
+}
+
+for (const value of [{ custom: true }, { ...legacyMarker, extra: true }, { ...legacyMarker, sha: 'bad' }, null, [], 'invalid']) {
+  test(`WriteVersionMarker_UserJson_${JSON.stringify(value)}_PreservesAndWarns`, () => fixture(dir => {
+    const path = resolve(dir, 'src/App.Web/wwwroot/version.json');
+    const content = typeof value === 'string' ? value : JSON.stringify(value);
+    writeFileSync(path, content);
+    assert.match(warnings(() => writeVersionMarker(dir, {})), /Warning: preserving .*wwwroot\/version.json/);
+    assert.equal(readFileSync(path, 'utf8'), content);
+  }));
+}
+
+test('WriteVersionMarker_TrackedLegacyFiles_PreservesAndWarns', () => fixture(dir => {
+  execFileSync('git', ['init', '-q', dir]);
+  const json = resolve(dir, 'src/App.Web/wwwroot/version.json');
+  const index = resolve(dir, 'src/App.Web/.version/index.html');
+  mkdirSync(dirname(index));
+  writeFileSync(json, JSON.stringify(legacyMarker));
+  writeFileSync(index, '<meta name="app-version" content="local" />');
+  execFileSync('git', ['add', '-f', json, index], { cwd: dir });
+  execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'fixture'], { cwd: dir });
+  const output = warnings(() => writeVersionMarker(dir, {}));
+  assert.match(output, /wwwroot\/version.json/);
+  assert.match(output, /remaining user files/);
+  assert.equal(readFileSync(json, 'utf8'), JSON.stringify(legacyMarker));
+  assert.equal(readFileSync(index, 'utf8'), '<meta name="app-version" content="local" />');
+}));
+
+test('WriteVersionMarker_LegacyDirectoryWithUserFile_PreservesUserFileAndWarns', () => fixture(dir => {
+  const folder = resolve(dir, 'src/App.Web/.version');
+  mkdirSync(folder);
+  writeFileSync(resolve(folder, 'index.html'), '<meta name="app-version" content="local" />');
+  writeFileSync(resolve(folder, 'notes.txt'), 'user content');
+  assert.match(warnings(() => writeVersionMarker(dir, {})), /remaining user files/);
+  assert.equal(existsSync(resolve(folder, 'index.html')), false);
+  assert.equal(readFileSync(resolve(folder, 'notes.txt'), 'utf8'), 'user content');
+}));
+
+test('WriteVersionMarker_UserIndex_PreservesAndWarns', () => fixture(dir => {
+  const folder = resolve(dir, 'src/App.Web/.version');
+  mkdirSync(folder);
+  writeFileSync(resolve(folder, 'index.html'), 'user host');
+  assert.match(warnings(() => writeVersionMarker(dir, {})), /remaining user files/);
+  assert.equal(readFileSync(resolve(folder, 'index.html'), 'utf8'), 'user host');
+}));
+
 test('WriteVersionMarker_CiMetadata_StampsMatchingHtmlAndJson', () => fixture(dir => {
   writeFileSync(resolve(dir, 'starter-version'), 'v0.1.12\n');
   const marker = writeVersionMarker(dir, { VERSION_SHA: 'a'.repeat(40), GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2' });
@@ -37,8 +91,8 @@ test('WriteVersionMarker_CiMetadata_StampsMatchingHtmlAndJson', () => fixture(di
 test('WriteVersionMarker_LegacyOutputs_RemovesOldMarkersAndPreservesOtherAssets', () => fixture(dir => {
   const web = resolve(dir, 'src/App.Web');
   mkdirSync(resolve(web, '.version'), { recursive: true });
-  writeFileSync(resolve(web, '.version/index.html'), 'legacy host');
-  writeFileSync(resolve(web, 'wwwroot/version.json'), '{"sha":"legacy"}');
+  writeFileSync(resolve(web, '.version/index.html'), '<meta name="app-version" content="local" />');
+  writeFileSync(resolve(web, 'wwwroot/version.json'), JSON.stringify(legacyMarker));
   writeFileSync(resolve(web, 'wwwroot/other.json'), '{"keep":true}');
   const marker = writeVersionMarker(dir, { VERSION_SHA: 'b'.repeat(40) });
   assert.equal(existsSync(resolve(web, 'wwwroot/version.json')), false);

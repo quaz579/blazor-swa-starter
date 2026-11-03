@@ -1,7 +1,27 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+function isTracked(root, path) {
+  try {
+    execFileSync('git', ['ls-files', '--error-unmatch', '--', path], { cwd: root, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isLegacyJson(path) {
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8'));
+    return value !== null && !Array.isArray(value) && typeof value === 'object'
+      && Object.keys(value).sort().join(',') === 'built_at,run_attempt,sha,starter_tag,workflow_run_id'
+      && typeof value.sha === 'string' && /^(?:[a-f0-9]{40}|local)$/.test(value.sha);
+  } catch {
+    return false;
+  }
+}
 
 export function writeVersionMarker(root, env = process.env) {
   let sha = env.VERSION_SHA;
@@ -38,8 +58,21 @@ export function writeVersionMarker(root, env = process.env) {
   const template = readFileSync(resolve(web, 'wwwroot/index.html'), 'utf8');
   const meta = /<meta name="app-version" content="[^"]*" \/>/;
   if (!meta.test(template)) throw new Error('Missing app-version meta placeholder');
-  rmSync(resolve(web, 'wwwroot/version.json'), { force: true });
-  rmSync(resolve(web, '.version'), { recursive: true, force: true });
+  const legacyJson = resolve(web, 'wwwroot/version.json');
+  if (existsSync(legacyJson)) {
+    if (!isTracked(root, legacyJson) && isLegacyJson(legacyJson)) rmSync(legacyJson);
+    else console.error(`Warning: preserving ${legacyJson}; it is tracked or is not a generated legacy version marker.`);
+  }
+  const legacyDir = resolve(web, '.version');
+  const legacyIndex = resolve(legacyDir, 'index.html');
+  if (existsSync(legacyIndex) && !isTracked(root, legacyIndex)
+      && /<meta name="app-version" content="(?:[a-f0-9]{40}|local)" \/>/.test(readFileSync(legacyIndex, 'utf8'))) {
+    rmSync(legacyIndex);
+  }
+  if (existsSync(legacyDir)) {
+    if (readdirSync(legacyDir).length === 0) rmdirSync(legacyDir);
+    else console.error(`Warning: preserving remaining user files in ${legacyDir}.`);
+  }
   mkdirSync(resolve(web, 'obj/version-marker'), { recursive: true });
   writeFileSync(resolve(web, 'obj/version-marker/index.html'), template.replace(meta, `<meta name="app-version" content="${sha}" />`));
   writeFileSync(resolve(web, 'obj/version-marker/version.json'), `${JSON.stringify(marker)}\n`);
