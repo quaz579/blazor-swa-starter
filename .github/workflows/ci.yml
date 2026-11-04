@@ -362,6 +362,21 @@ jobs:
       - name: Publish web app with version marker
         run: dotnet publish src/App.Web/App.Web.csproj -c Release -o artifacts/web
 
+      - name: Select preview storage
+        if: github.event_name == 'pull_request'
+        run: printf '%s' '{"mode":"preview"}' > src/App.Api/storage-mode.json
+
+      - name: Publish API and verify storage marker
+        run: |
+          dotnet publish src/App.Api/App.Api.csproj -c Release -o artifacts/api
+          if [[ "${{ github.event_name }}" == pull_request ]]; then
+            cmp src/App.Api/storage-mode.json artifacts/api/storage-mode.json
+          fi
+
+      - name: Assert production storage artifact
+        if: github.event_name != 'pull_request'
+        run: scripts/assert-production-storage.sh
+
       - name: Build and deploy
         id: deploy
         uses: Azure/static-web-apps-deploy@v1
@@ -451,6 +466,7 @@ jobs:
         env:
           CI: "true"
           PW_GLOBAL_TIMEOUT_MS: "300000"
+          EXPECTED_STORAGE_MODE: preview
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
         run: npx playwright test specs/smoke.spec.ts --grep @smoke
 
@@ -463,3 +479,27 @@ jobs:
             tests/playwright-report/
             tests/test-results/
           retention-days: 7
+
+  smoke-production:
+    needs: [deploy]
+    if: github.event_name != 'pull_request' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: tests
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests
+      - name: Run production smoke tests
+        working-directory: tests
+        env:
+          CI: "true"
+          EXPECTED_STORAGE_MODE: production
+          BASE_URL: ${{ needs.deploy.outputs.preview_url }}
+        run: npx playwright test specs/smoke.spec.ts --grep @smoke

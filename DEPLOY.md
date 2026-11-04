@@ -91,12 +91,24 @@ block a deploy.
 ### PR previews
 
 A pull request gets its own Static Web Apps preview slot, deployed by the same `deploy` job.
-**A preview environment inherits the production Static Web App's app settings — including the
-production storage connection string and `APP_ENVIRONMENT`.** Factory-provisioned PR previews
-therefore also report production runtime mode through `AppEnvironment`. It is not an isolated sandbox; only tests in
-`tests/specs/smoke.spec.ts` selected with `--grep @smoke` may run against one, which is what
-`smoke-preview` does. Closing the PR runs `.github/workflows/pr-cleanup.yml`, which tears the
-preview slot down.
+Previews inherit `APP_ENVIRONMENT=production`, but a generated, gitignored
+`src/App.Api/storage-mode.json` selects `PREVIEW_STORAGE_CONNECTION_STRING` for all blobs and
+tables, including POC auth users and sessions. Terraform provisions a separate shared preview
+StorageV2 Standard/LRS account and private `app-data` container, with no CORS or lifecycle policy.
+Previews are disposable and share data with other PRs; production storage is separate.
+Missing/empty preview settings, malformed markers, and unknown modes throw without production
+fallback. No marker preserves production connection resolution. Main deploys reject any marker
+in API source/build/publish artifacts. Health exposes only storage mode and account name.
+
+After the Terraform changes merge, `.github/workflows/infra.yml` applies on a qualifying main
+push (when `STARTER_INFRA_CI=true`); PRs only plan, and there is no workflow-dispatch trigger.
+Before that apply, preview smoke is expected to fail closed for the missing preview setting.
+After apply, rerun the PR CI deployment so the preview inherits the setting, then smoke must
+report `storageMode=preview`. Production smoke requires `storageMode=production`.
+Only GET-only `tests/specs/smoke.spec.ts --grep @smoke` is eligible for deployed smoke; never
+run the full suite or manual writes against previews/live. Closing the PR tears down its slot;
+the shared preview account remains. Extra storage costs about $0.01–0.05/month per product
+at the design's small-preview workload; no data migration is needed.
 
 ## Write auth
 

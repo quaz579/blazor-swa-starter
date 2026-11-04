@@ -61,6 +61,24 @@ resource "azurerm_storage_container" "app_data" {
   container_access_type = "private"
 }
 
+resource "azurerm_storage_account" "preview" {
+  name                       = "sp${local.name_prefix_alnum}${random_string.suffix.result}"
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  account_kind               = "StorageV2"
+  account_tier               = "Standard"
+  account_replication_type   = "LRS"
+  min_tls_version            = "TLS1_2"
+  https_traffic_only_enabled = true
+  tags                       = var.tags
+}
+
+resource "azurerm_storage_container" "preview_app_data" {
+  name                  = "app-data"
+  storage_account_id    = azurerm_storage_account.preview.id
+  container_access_type = "private"
+}
+
 resource "azurerm_log_analytics_workspace" "main" {
   name                = local.log_analytics_workspace_name
   resource_group_name = azurerm_resource_group.main.name
@@ -92,6 +110,7 @@ resource "azurerm_static_web_app" "main" {
   # dev against Azurite (which the API resolves separately) succeeds.
   app_settings = {
     APP_ENVIRONMENT                       = var.app_environment
+    PREVIEW_STORAGE_CONNECTION_STRING     = azurerm_storage_account.preview.primary_connection_string
     AZURE_STORAGE_CONNECTION_STRING       = azurerm_storage_account.main.primary_connection_string
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }

@@ -98,3 +98,5 @@ Desktop.ini
 .desloppify/progression.jsonl*
 .desloppify/scorecard*
 /scorecard.png
+
+src/App.Api/storage-mode.json

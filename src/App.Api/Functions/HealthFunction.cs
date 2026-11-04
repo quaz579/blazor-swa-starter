@@ -1,4 +1,5 @@
 using System.Net;
+using App.Api.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -24,8 +25,20 @@ public sealed class HealthFunction
     {
         _logger.LogInformation("Processing health check request");
 
+        (string Mode, string Account) storage;
+        try
+        {
+            storage = StorageConnection.Identity();
+        }
+        catch (MissingPreviewStorageException exception)
+        {
+            var unavailable = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
+            await unavailable.WriteAsJsonAsync(new { storageMode = "preview", error = exception.Message }, cancellationToken);
+            unavailable.StatusCode = HttpStatusCode.ServiceUnavailable;
+            return unavailable;
+        }
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { status = "ok", utc = _timeProvider.GetUtcNow() }, cancellationToken);
+        await response.WriteAsJsonAsync(new { status = "ok", utc = _timeProvider.GetUtcNow(), storageMode = storage.Mode, storageAccount = storage.Account }, cancellationToken);
         return response;
     }
 }

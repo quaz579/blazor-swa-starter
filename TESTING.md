@@ -108,8 +108,14 @@ also signs in so the write specs keep working. With auth disabled,
 Run the preview smoke subset (see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 
 ```sh
-cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke
+cd tests && EXPECTED_STORAGE_MODE=preview npx playwright test specs/smoke.spec.ts --grep @smoke
 ```
+
+Previews use a separate account shared by PRs and still inherit `APP_ENVIRONMENT=production`.
+The deploy marker must be published with the API. Smoke uses GET only and asserts health
+`storageMode=preview` (production smoke and marker-free local suites require `production`).
+Health reports the resolved account name, never a connection string or key. A missing preview
+setting must fail closed until Terraform is applied and the preview redeployed.
 
 `smoke.spec.ts` also performs anonymous GETs of `/version.json` and `/`: it requires JSON
 content type, all five marker fields, `Cache-Control: no-store`, and a SHA matching the served
