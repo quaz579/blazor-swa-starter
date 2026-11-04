@@ -34,7 +34,6 @@ public sealed class HealthFunction
         {
             var unavailable = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
             await unavailable.WriteAsJsonAsync(new { storageMode = "preview", error = exception.Message }, cancellationToken);
-            unavailable.StatusCode = HttpStatusCode.ServiceUnavailable;
             return unavailable;
         }
         var response = req.CreateResponse(HttpStatusCode.OK);

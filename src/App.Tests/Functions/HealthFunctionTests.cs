@@ -2,6 +2,7 @@ using App.Api.Functions;
 using App.Tests.PocAuth;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace App.Tests.Functions;
 
@@ -65,8 +66,15 @@ public sealed class HealthFunctionTests
         {
             File.WriteAllText(marker, "{\"mode\":\"preview\"}");
             Environment.SetEnvironmentVariable("PREVIEW_STORAGE_CONNECTION_STRING", null);
+            var request = TestHttpRequestData.CreateRequest();
+            var transport = request.CreateResponse();
+            transport.When(value => value.StatusCode = Arg.Any<System.Net.HttpStatusCode>()).Do(_ =>
+            {
+                if (transport.Body.Length > 0)
+                    throw new InvalidOperationException("Response has already started");
+            });
             var function = new HealthFunction(NullLogger<HealthFunction>.Instance, _time);
-            var response = await function.GetHealth(TestHttpRequestData.CreateRequest(), CancellationToken.None);
+            var response = await function.GetHealth(request, CancellationToken.None);
             response.StatusCode.Should().Be(System.Net.HttpStatusCode.ServiceUnavailable);
             using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
             body.RootElement.GetProperty("error").GetString().Should().Contain("PREVIEW_STORAGE_CONNECTION_STRING");
