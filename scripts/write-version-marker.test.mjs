@@ -128,6 +128,18 @@ test('WriteVersionMarker_LegacyOutputs_RemovesOldMarkersAndPreservesOtherAssets'
   assert.doesNotThrow(() => writeVersionMarker(dir, { VERSION_SHA: 'b'.repeat(40) }));
 }));
 
+test('WriteVersionMarker_SymlinkedCheckout_RunsCliAndWritesMatchingAssets', () => fixture(dir => {
+  mkdirSync(resolve(dir, 'scripts'));
+  cpSync(resolve(root, 'scripts/write-version-marker.mjs'), resolve(dir, 'scripts/write-version-marker.mjs'));
+  const alias = `${dir}-link`;
+  symlinkSync(dir, alias, 'dir');
+  try {
+    const marker = JSON.parse(execFileSync(process.execPath, [resolve(alias, 'scripts/write-version-marker.mjs')], { encoding: 'utf8' }));
+    assert.deepEqual(JSON.parse(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/version.json'), 'utf8')), marker);
+    assert.match(readFileSync(resolve(dir, 'src/App.Web/obj/version-marker/index.html'), 'utf8'), new RegExp(`content="${marker.sha}"`));
+  } finally { rmSync(alias); }
+}));
+
 test('WriteVersionMarker_LocalCheckout_UsesHeadAndLocalRun', () => fixture(dir => {
   const marker = writeVersionMarker(dir, {});
   assert.equal(marker.sha, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim());
@@ -160,11 +172,27 @@ test('EnablePocAuth_VersionRoute_PreservesAnonymousNoStoreAndFallbackExclusion',
     assert.equal(route.headers['Cache-Control'], 'no-store');
     assert.equal(route.allowedRoles, undefined);
     assert.ok(config.navigationFallback.exclude.includes('/version.json'));
+    assert.deepEqual(config.routes.find(route => route.route === '/api/__test/*').allowedRoles, ['seed-reset-disabled']);
     return route;
   };
   const before = check();
   execFileSync(process.execPath, [resolve(dir, 'scripts/enable-poc-auth.mjs')]);
   assert.deepEqual(check(), before);
+}));
+
+test('WriteLocalSwaConfig_ResetRoute_RemovesOnlyLocalDenyAndPreservesDeployedConfig', () => fixture(dir => {
+  for (const path of ['scripts/write-local-swa-config.mjs', 'src/App.Web/wwwroot/staticwebapp.config.json']) {
+    mkdirSync(dirname(resolve(dir, path)), { recursive: true });
+    cpSync(resolve(root, path), resolve(dir, path));
+  }
+  const deployedPath = resolve(dir, 'src/App.Web/wwwroot/staticwebapp.config.json');
+  const before = readFileSync(deployedPath, 'utf8');
+  execFileSync(process.execPath, [resolve(dir, 'scripts/write-local-swa-config.mjs')]);
+  assert.equal(readFileSync(deployedPath, 'utf8'), before);
+  const local = JSON.parse(readFileSync(resolve(dir, '.azurite/local-swa/staticwebapp.config.json'), 'utf8'));
+  const expected = JSON.parse(before);
+  expected.routes = expected.routes.filter(route => route.route !== '/api/__test/*');
+  assert.deepEqual(local, expected);
 }));
 
 for (const file of ['service-worker.js', 'service-worker.published.js']) {

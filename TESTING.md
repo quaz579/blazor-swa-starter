@@ -82,8 +82,14 @@ Targets the SWA CLI proxy (`http://localhost:4280` from `scripts/ports.env`, res
 `tests/helpers/ports.ts` — never hardcode a port in a spec), which is what actually routes
 `/api/*` to the Functions host; the Blazor dev server port alone does not. `tests/specs/` covers
 CRUD flows, validation, empty/error states, and a guard spec
-(`azurite-seed-guard.spec.ts`) that proves the fixture seeder refuses any connection string
-other than `UseDevelopmentStorage=true`.
+(`azurite-seed-guard.spec.ts`) that checks the reset response and loopback guards.
+`tests/helpers/seed-azurite-fixtures.ts` calls `POST /api/__test/reset-to-seed` at `BASE_URL`
+(default: the SWA proxy from `ports.env`) and requires the exact `tests/seed-manifest.json`
+version, table/blob counts, and sorted store coverage. It never writes storage directly.
+Fixture specs reset before each test, including repeats; the empty-state spec deletes Items
+through the authenticated API afterward. Use `npx playwright test --repeat-each 2` to exercise
+reader isolation after writes. Startup seeds must finish before `/api/health/ready` returns 200.
+The canonical registration, write gate, and runtime guard contract is in `AGENTS.md`.
 
 `staticwebapp.config.json` requires an authenticated session for write verbs (`POST`/`DELETE`)
 on gated routes (see `DEPLOY.md`'s "Write auth"; the starter's Items sample uses `/api/items`),

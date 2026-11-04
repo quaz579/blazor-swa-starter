@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/seeded-test';
 import { ItemsPage } from '../pages/items-page';
 
 test('items navigation waits for WASM bootstrap before returning', async ({ page }) => {

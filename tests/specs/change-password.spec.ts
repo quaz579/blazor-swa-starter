@@ -1,5 +1,5 @@
 import { gotoApp } from '../helpers/app-ready';
-import { APIRequestContext, ConsoleMessage, Page, expect, test } from '@playwright/test';
+import { APIRequestContext, ConsoleMessage, Page, expect, test } from '../helpers/seeded-test';
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
 const NEW_PASSWORD = 'Rotated-e2e-pass-7';

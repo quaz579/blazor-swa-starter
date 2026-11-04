@@ -1,10 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { clearItems } from '../helpers/seed-azurite-fixtures';
+import { expect, test } from '../helpers/seeded-test';
 import { ItemsPage } from '../pages/items-page';
-
-test.beforeEach(async () => {
-  await clearItems();
-});
 
 function countPostsTo(page: import('@playwright/test').Page, path: string): () => number {
   let count = 0;

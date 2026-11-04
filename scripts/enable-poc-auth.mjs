@@ -44,7 +44,7 @@ settings.PocAuth = { ...(settings.PocAuth ?? {}), Enabled: true };
 writeFileSync(webSettingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 
 const swaConfig = JSON.parse(readFileSync(swaConfigPath, 'utf8'));
-swaConfig.routes = (swaConfig.routes ?? []).filter((route) => route.allowedRoles === undefined);
+swaConfig.routes = (swaConfig.routes ?? []).filter((route) => route.allowedRoles === undefined || route.route === "/api/__test/*");
 writeFileSync(swaConfigPath, `${JSON.stringify(swaConfig, null, 2)}\n`);
 
 console.log(`POC auth enabled with ${users.length} seeded user(s): ${seedPath}`);

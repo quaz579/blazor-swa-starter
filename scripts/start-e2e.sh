@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ports.env"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 node "$SCRIPT_DIR/write-version-marker.mjs"
+node "$SCRIPT_DIR/write-local-swa-config.mjs"
 RUN_DIR="$REPO_ROOT/.azurite/run"
 LOG_DIR="$REPO_ROOT/.azurite/logs"
 AZURITE_DATA_DIR="$REPO_ROOT/.azurite/e2e"
@@ -86,10 +87,10 @@ fi
 if [ -n "$(listener_pid "$API_PORT")" ]; then
   echo "Functions API already running on port $API_PORT, leaving it alone"
 else
-  (cd "$REPO_ROOT/src/App.Api" && exec func start --port "$API_PORT") > "$LOG_DIR/func-e2e.log" 2>&1 &
+  (cd "$REPO_ROOT/src/App.Api" && TEST_RESET_ENABLED="${TEST_RESET_ENABLED-true}" exec func start --port "$API_PORT") > "$LOG_DIR/func-e2e.log" 2>&1 &
   func_pid=$!
   record_pid "func" "$func_pid" "$API_PORT"
-  wait_for "Functions API" 60 "$LOG_DIR/func-e2e.log" http_ok "http://localhost:$API_PORT/api/health"
+  wait_for "Functions API" 60 "$LOG_DIR/func-e2e.log" http_ok "http://localhost:$API_PORT/api/health/ready"
   echo "Functions API started (pid $func_pid) - http://localhost:$API_PORT"
 fi
 
@@ -109,7 +110,7 @@ if [ -n "$(listener_pid "$SWA_PORT")" ]; then
 else
   # swa-cli.config.json already points appDevserverUrl/apiDevserverUrl at the
   # servers started above, so swa start proxies them rather than relaunching.
-  (cd "$REPO_ROOT" && exec swa start) > "$LOG_DIR/swa-e2e.log" 2>&1 &
+  (cd "$REPO_ROOT" && exec swa start --swa-config-location "$REPO_ROOT/.azurite/local-swa") > "$LOG_DIR/swa-e2e.log" 2>&1 &
   swa_pid=$!
   record_pid "swa" "$swa_pid" "$SWA_PORT"
   wait_for "SWA CLI" 30 "$LOG_DIR/swa-e2e.log" http_ok "http://localhost:$SWA_PORT/"

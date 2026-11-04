@@ -58,6 +58,14 @@ Defined once in [`scripts/ports.env`](scripts/ports.env) — never hardcode one 
 `swa-cli.config.json` is static JSON and can't source `ports.env`, so it duplicates the same
 numbers; `scripts/validate-environment.sh` asserts the two agree.
 
+The start scripts enable `TEST_RESET_ENABLED=true` only for the local Functions process and
+wait for `/api/health/ready`. Set `TEST_RESET_ENABLED=false` (or an empty value) to test the
+blank 404 guard. `APP_ENVIRONMENT=production` always disables reset and the sample seed.
+They generate an ignored local SWA configuration permitting the reset hook; the deployed
+configuration continues to deny it. Seed/reset registration and write hold-off live in `AGENTS.md`.
+To restore fixtures, call `POST /api/__test/reset-to-seed` through the SWA proxy or Functions
+port; the response must match `tests/seed-manifest.json` plus its sorted `stores` list.
+
 ## Storage connection
 
 `App.Api`'s `BlobJsonStore<T>` resolves its connection string in order:

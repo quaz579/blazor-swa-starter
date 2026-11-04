@@ -1,6 +1,7 @@
 using System.Text.Json;
 using App.Api.PocAuth;
 using App.Api.Storage;
+using App.Api.Seeding;
 using App.Core.Models;
 using Azure.Core.Serialization;
 using Microsoft.Azure.Functions.Worker;
@@ -21,6 +22,9 @@ var host = new HostBuilder()
         });
 
         services.AddBlobJsonStore<Item>("items");
+        services.AddSingleton<ISeedStore>(_ => new BlobSeedStore("app-data"));
+        ItemsSeedData.Register(services);
+        services.AddSeedContract();
         services.AddPocAuth();
     })
     .Build();

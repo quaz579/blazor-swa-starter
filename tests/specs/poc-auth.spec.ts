@@ -1,5 +1,5 @@
 import { gotoApp } from '../helpers/app-ready';
-import { Page, expect, test } from '@playwright/test';
+import { Page, expect, test } from '../helpers/seeded-test';
 import { loginAs, pocAuthEnabled, pocUser } from '../helpers/poc-auth';
 
 async function pauseClockBeforeBoot(page: Page) {
