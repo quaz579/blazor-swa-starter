@@ -100,11 +100,15 @@ Missing/empty preview settings, malformed markers, and unknown modes throw witho
 fallback. No marker preserves production connection resolution. Main deploys reject any marker
 in API source/build/publish artifacts. Health exposes only storage mode and account name.
 
-After the Terraform changes merge, `.github/workflows/infra.yml` applies on a qualifying main
-push (when `STARTER_INFRA_CI=true`); PRs only plan, and there is no workflow-dispatch trigger.
-Before that apply, preview smoke is expected to fail closed for the missing preview setting.
-After apply, rerun the PR CI deployment so the preview inherits the setting, then smoke must
-report `storageMode=preview`. Production smoke requires `storageMode=production`.
+`.github/workflows/infra.yml` applies on a qualifying main push after merge (when
+`STARTER_INFRA_CI=true`); PRs only plan, and there is no workflow-dispatch trigger.
+Before the preview account and setting are applied, preview smoke is expected to fail closed.
+To unblock a PR before merge, the operator applies that PR's Terraform with the existing
+starter backend, repository variables, and their own login; agents never apply it.
+While the PR remains open, rerun its CI including deploy so the preview inherits the setting.
+If an existing preview retains stale inherited settings, recreate it through the normal PR
+close/reopen lifecycle before rerunning CI. Smoke must then report `storageMode=preview`.
+Production smoke requires `storageMode=production`.
 Only GET-only `tests/specs/smoke.spec.ts --grep @smoke` is eligible for deployed smoke; never
 run the full suite or manual writes against previews/live. Closing the PR tears down its slot;
 the shared preview account remains. Extra storage costs about $0.01–0.05/month per product
