@@ -347,6 +347,46 @@ public sealed class SeedContractTests : IDisposable
         (await service.ResetAsync(default))!.Should().BeEquivalentTo(new SeedResult("0", [], [], []));
     }
 
+    [Fact]
+    public async Task Ready_SeedDependencyConstructionThrows_LogsFailureAndKeepsHostAvailableWith503()
+    {
+        var logger = Substitute.For<Microsoft.Extensions.Logging.ILogger<SeedService>>();
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton(logger);
+        services.AddSingleton<ISeedData>(_ => throw new InvalidOperationException("seed dependency failed"));
+        services.AddSeedContract();
+        using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<SeedService>();
+        await service.StartAsync(default);
+        await service.ExecuteTask!;
+        ((ObjectResult)new SeedFunctions(service).Ready(Request())).StatusCode.Should().Be(503);
+        logger.ReceivedCalls().Should().Contain(call => call.GetMethodInfo().Name == "Log"
+            && Equals(call.GetArguments()[0], Microsoft.Extensions.Logging.LogLevel.Error));
+    }
+
+    [Fact]
+    public async Task Reset_ProductionWithUnavailableStoreConfiguration_Returns404WithoutResolvingStores()
+    {
+        Environment.SetEnvironmentVariable("APP_ENVIRONMENT", "production");
+        var resolved = false;
+        var services = new ServiceCollection().AddLogging();
+        services.AddSingleton<ISeedStore>(_ =>
+        {
+            resolved = true;
+            throw new App.Api.Storage.MissingPreviewStorageException();
+        });
+        services.AddSeedContract();
+        using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<SeedService>();
+        await service.StartAsync(default);
+        await service.ExecuteTask!;
+        service.Ready.Should().BeTrue();
+        service.Version.Should().Be("0");
+        var result = await new SeedFunctions(service).Reset(Request(), default);
+        result.Should().BeOfType<StatusCodeResult>().Which.StatusCode.Should().Be(404);
+        resolved.Should().BeFalse();
+    }
+
     private sealed class ControlledSeed(Func<Task> run) : ISeedData
     {
         public string Version => "test";

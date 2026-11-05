@@ -10,36 +10,50 @@ public sealed record SeedResult(
     [property: JsonPropertyName("seed_version")] string SeedVersion,
     Dictionary<string, int> Tables, Dictionary<string, int> Blobs, string[] Stores);
 
-public sealed class SeedService(ISeedData seed, IEnumerable<ISeedStore> stores, ILogger<SeedService> logger) : BackgroundService
+public sealed class SeedService : BackgroundService
 {
-    private readonly ISeedStore[] _stores = stores.ToArray();
+    private readonly Lazy<ISeedData> _seed;
+    private readonly Lazy<ISeedStore[]> _stores;
+    private readonly ILogger<SeedService> _logger;
     private volatile bool _ready;
+
+    public SeedService(ISeedData seed, IEnumerable<ISeedStore> stores, ILogger<SeedService> logger)
+        : this(() => seed, () => stores, logger) { }
+
+    internal SeedService(Func<ISeedData> seed, Func<IEnumerable<ISeedStore>> stores, ILogger<SeedService> logger)
+    {
+        _seed = new(seed);
+        _stores = new(() => stores().ToArray());
+        _logger = logger;
+    }
+
     public bool Ready => _ready;
-    public string Version => seed.Version;
+    public string Version => _seed.Value.Version;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await ResetGate.Shared.WriteAsync(() => seed.EnsureSeededAsync(stoppingToken), stoppingToken);
+            await ResetGate.Shared.WriteAsync(() => _seed.Value.EnsureSeededAsync(stoppingToken), stoppingToken);
             _ready = true;
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Startup seed failed; readiness remains unavailable");
+            _logger.LogError(exception, "Startup seed failed; readiness remains unavailable");
         }
     }
 
     public Task<SeedResult?> ResetAsync(CancellationToken cancellationToken) => ResetGate.Shared.TryResetAsync(async () =>
     {
-        foreach (var store in _stores) await store.ClearAsync(cancellationToken);
-        await seed.EnsureSeededAsync(cancellationToken);
+        var stores = _stores.Value;
+        foreach (var store in stores) await store.ClearAsync(cancellationToken);
+        await _seed.Value.EnsureSeededAsync(cancellationToken);
         var tables = new Dictionary<string, int>();
         var blobs = new Dictionary<string, int>();
-        foreach (var store in _stores)
+        foreach (var store in stores)
             (store.Kind == "table" ? tables : blobs).Add(store.Name, await store.CountAsync(cancellationToken));
-        return new SeedResult(seed.Version, tables, blobs,
-            _stores.Select(store => $"{store.Kind}:{store.Name}").Order(StringComparer.Ordinal).ToArray());
+        return new SeedResult(Version, tables, blobs,
+            stores.Select(store => $"{store.Kind}:{store.Name}").Order(StringComparer.Ordinal).ToArray());
     }, cancellationToken);
 }
 
@@ -49,7 +63,10 @@ public static class SeedRegistration
     {
         services.TryAddSingleton<ISeedData, EmptySeedData>();
         services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, SeedRequestOriginFilter>();
-        services.AddSingleton<SeedService>();
+        services.AddSingleton(provider => new SeedService(
+            () => provider.GetRequiredService<ISeedData>(),
+            () => provider.GetServices<ISeedStore>(),
+            provider.GetRequiredService<ILogger<SeedService>>()));
         services.AddHostedService(provider => provider.GetRequiredService<SeedService>());
         return services;
     }
