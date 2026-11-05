@@ -483,7 +483,8 @@ jobs:
 
   smoke-production:
     needs: [deploy]
-    if: github.event_name != 'pull_request' && needs.deploy.result == 'success'
+    if: >-
+      !cancelled() && github.event_name != 'pull_request' && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
