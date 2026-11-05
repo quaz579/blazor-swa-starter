@@ -3,8 +3,8 @@ import { HomePage } from '../pages/home-page';
 import { ItemsPage } from '../pages/items-page';
 
 // Read-only, no seeding: this file is safe to run against a deployed preview
-// environment, which inherits production app settings and therefore
-// production storage (CI's smoke-preview job). No POST/DELETE anywhere here.
+// environment, which inherits production app settings and uses separate
+// preview storage (CI's smoke-preview job). No POST/DELETE anywhere here.
 
 test('home page loads and reports API health', { tag: '@smoke' }, async ({ page }) => {
   const home = new HomePage(page);
@@ -40,4 +40,26 @@ test('served version is anonymous JSON and matches the served HTML', { tag: '@sm
   expect(home.status()).toBe(200);
   const html = await home.text();
   expect(html.match(/<meta name="app-version" content="([^"]+)"/u)?.[1]).toBe(marker.sha);
+});
+
+test('health reports the expected storage identity', { tag: '@smoke' }, async ({ request }) => {
+  const response = await request.get('/api/health');
+  expect(response.status(), await response.text()).toBe(200);
+  const health = await response.json();
+  const expectedMode = process.env.EXPECTED_STORAGE_MODE ?? 'production';
+  expect(health.storageMode).toBe(expectedMode);
+  expect(health.storageAccount).toMatch(/^[a-z0-9]+$/);
+  expect(health.storageIdentity).toMatch(/^(verified|unverified)$/);
+  if (process.env.REQUIRE_VERIFIED_STORAGE_IDENTITY === 'true') {
+    expect(health.storageIdentity).toBe('verified');
+    expect(health.productionStorageAccount).toMatch(/^[a-z0-9]+$/);
+    if (expectedMode === 'preview') {
+      expect(health.storageAccount).not.toBe(health.productionStorageAccount);
+    } else {
+      expect(health.storageAccount).toBe(health.productionStorageAccount);
+    }
+  }
+  expect(Object.keys(health).sort()).toEqual([
+    'productionStorageAccount', 'status', 'storageAccount', 'storageIdentity', 'storageMode', 'utc',
+  ]);
 });

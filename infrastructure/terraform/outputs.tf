@@ -29,3 +29,8 @@ output "static_web_app_api_key" {
   description = "Static Web App deployment token. Also written to the GitHub repository as the AZURE_STATIC_WEB_APPS_API_TOKEN secret by github.tf."
   sensitive   = true
 }
+
+output "preview_storage_account_name" {
+  value       = azurerm_storage_account.preview.name
+  description = "Name of the storage account shared by disposable PR previews."
+}

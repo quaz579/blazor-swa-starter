@@ -138,6 +138,7 @@ jobs:
             echo '<!-- starter-infra-plan -->'
             echo '### Infrastructure plan'
             printf 'Plan fingerprint (SHA-256): %s\n\n' "$fingerprint"
+            sed -n '/^Plan: /p' plan.log
             echo 'Resource addresses and actions only:'
             echo '```text'
             cat actions.txt
@@ -328,6 +329,7 @@ jobs:
             echo '<!-- starter-infra-plan -->'
             echo '### Infrastructure plan'
             printf 'Plan fingerprint (SHA-256): %s\n\n' "$fingerprint"
+            sed -n '/^Plan: /p' plan.log
             echo 'Resource addresses and actions only:'
             echo '```text'
             cat actions.txt

@@ -100,7 +100,14 @@ it: exactly `"production"` means production; unset, empty, whitespace, and every
 
 The factory sets Terraform `app_environment = "production"` at provisioning; its default is
 `"development"`. The existing `environment` variable only names resources. SWA PR preview
-environments inherit production app settings, so they also report production runtime mode.
+environments inherit `APP_ENVIRONMENT=production`, so they also report production runtime mode.
+Their generated `storage-mode.json` selects a separate shared preview storage account for blobs
+and tables, including POC auth. Terraform supplies expected production and preview account names;
+the API verifies the resolved account against the active mode and fails closed on missing settings,
+invalid storage configuration, or identity mismatch. Every HTTP function maps these configuration
+errors to 503 with a safe JSON error and `storageMode`. Local Azurite runs with neither expected
+name report `storageIdentity=unverified`; deployed health reports `verified` and the resolved
+account name.
 This convention does not change existing behavior, including the opt-in POC auth scaffold.
 
 The Blazor WebAssembly client never reads or invents its own mode setting; when the UI needs the
@@ -208,13 +215,14 @@ Three tiers, in order, each cheaper to run than the next:
    then `./scripts/stop-e2e.sh` — always the pair, including on failure. This is a full
    Azurite + Functions + Blazor + SWA-proxy stack, and it is what CI's `e2e` job runs.
 3. **The PR preview environment.** Every PR gets a live Static Web Apps preview slot deployed
-   by CI. **A preview environment inherits the production Static Web App's app settings, and
-   therefore production storage** — it is not an isolated sandbox. Only tests in
+   by CI. **Previews use a separate shared preview storage account**, selected by a generated deploy
+   marker. They still inherit `APP_ENVIRONMENT=production`; PRs share preview data. Only tests in
    `tests/specs/smoke.spec.ts` selected with `--grep @smoke` may run against a preview or live URL.
    Other specs also carry `@smoke` for the factory's deployed-app check, so the tag alone does
    not define preview eligibility. Run `cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke`;
    CI's `smoke-preview` job enforces this selection automatically. You must not run the full suite or any write path (`POST`/`DELETE`
-   against any write endpoint) against a preview or live URL by hand.
+   against any write endpoint) against a preview or live URL by hand. Deployed smoke requires
+   `storageIdentity=verified` and the expected mode; local smoke accepts Azurite's `unverified` identity.
 
 ## Ports: single source of truth
 

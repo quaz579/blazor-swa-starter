@@ -108,8 +108,18 @@ also signs in so the write specs keep working. With auth disabled,
 Run the preview smoke subset (see `AGENTS.md`'s "how to prove your change works" and `DEPLOY.md`'s PR-preview section):
 
 ```sh
-cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke
+cd tests && EXPECTED_STORAGE_MODE=preview npx playwright test specs/smoke.spec.ts --grep @smoke
 ```
+
+Previews use a separate account shared by PRs and still inherit `APP_ENVIRONMENT=production`.
+The deploy marker must be published with the API. Smoke uses GET only and asserts health
+`storageMode=preview`, `storageIdentity=verified`, and an account different from the reported
+production account (production smoke requires `storageMode=production` and an account matching
+that expected production identity). Terraform sets both expected account names as non-secret SWA
+app settings. Health reports the resolved account name and identity, never a connection string or
+key. Missing/invalid preview configuration or an account mismatch returns HTTP 503 from every API
+HTTP function until Terraform is applied and the preview redeployed. Local Azurite without expected
+account settings remains `storageIdentity=unverified`, which local smoke accepts.
 
 `smoke.spec.ts` also performs anonymous GETs of `/version.json` and `/`: it requires JSON
 content type, all five marker fields, `Cache-Control: no-store`, and a SHA matching the served
