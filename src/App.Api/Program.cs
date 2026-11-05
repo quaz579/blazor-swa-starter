@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 var host = new HostBuilder()
-    .ConfigureFunctionsWebApplication()
+    .ConfigureFunctionsWebApplication(worker => worker.UseMiddleware<StorageConfigurationExceptionMiddleware>())
     .ConfigureServices(services =>
     {
         services.AddApplicationInsightsTelemetryWorkerService();

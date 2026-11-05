@@ -102,7 +102,12 @@ The factory sets Terraform `app_environment = "production"` at provisioning; its
 `"development"`. The existing `environment` variable only names resources. SWA PR preview
 environments inherit `APP_ENVIRONMENT=production`, so they also report production runtime mode.
 Their generated `storage-mode.json` selects a separate shared preview storage account for blobs
-and tables, including POC auth. Missing preview settings fail closed; no marker keeps production storage.
+and tables, including POC auth. Terraform supplies expected production and preview account names;
+the API verifies the resolved account against the active mode and fails closed on missing settings,
+invalid storage configuration, or identity mismatch. Every HTTP function maps these configuration
+errors to 503 with a safe JSON error and `storageMode`. Local Azurite runs with neither expected
+name report `storageIdentity=unverified`; deployed health reports `verified` and the resolved
+account name.
 This convention does not change existing behavior, including the opt-in POC auth scaffold.
 
 The Blazor WebAssembly client never reads or invents its own mode setting; when the UI needs the
@@ -216,7 +221,8 @@ Three tiers, in order, each cheaper to run than the next:
    Other specs also carry `@smoke` for the factory's deployed-app check, so the tag alone does
    not define preview eligibility. Run `cd tests && npx playwright test specs/smoke.spec.ts --grep @smoke`;
    CI's `smoke-preview` job enforces this selection automatically. You must not run the full suite or any write path (`POST`/`DELETE`
-   against any write endpoint) against a preview or live URL by hand.
+   against any write endpoint) against a preview or live URL by hand. Deployed smoke requires
+   `storageIdentity=verified` and the expected mode; local smoke accepts Azurite's `unverified` identity.
 
 ## Ports: single source of truth
 

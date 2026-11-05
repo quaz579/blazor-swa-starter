@@ -25,19 +25,17 @@ public sealed class HealthFunction
     {
         _logger.LogInformation("Processing health check request");
 
-        (string Mode, string Account) storage;
-        try
-        {
-            storage = StorageConnection.Identity();
-        }
-        catch (MissingPreviewStorageException exception)
-        {
-            var unavailable = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
-            await unavailable.WriteAsJsonAsync(new { storageMode = "preview", error = exception.Message }, cancellationToken);
-            return unavailable;
-        }
+        var storage = StorageConnection.Identity();
         var response = req.CreateResponse(HttpStatusCode.OK);
-        await response.WriteAsJsonAsync(new { status = "ok", utc = _timeProvider.GetUtcNow(), storageMode = storage.Mode, storageAccount = storage.Account }, cancellationToken);
+        await response.WriteAsJsonAsync(new
+        {
+            status = "ok",
+            utc = _timeProvider.GetUtcNow(),
+            storageMode = storage.Mode,
+            storageAccount = storage.Account,
+            storageIdentity = storage.Identity,
+            productionStorageAccount = storage.ProductionAccount
+        }, cancellationToken);
         return response;
     }
 }

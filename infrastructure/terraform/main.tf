@@ -112,6 +112,8 @@ resource "azurerm_static_web_app" "main" {
     APP_ENVIRONMENT                       = var.app_environment
     PREVIEW_STORAGE_CONNECTION_STRING     = azurerm_storage_account.preview.primary_connection_string
     AZURE_STORAGE_CONNECTION_STRING       = azurerm_storage_account.main.primary_connection_string
+    PRODUCTION_STORAGE_ACCOUNT_NAME       = azurerm_storage_account.main.name
+    PREVIEW_STORAGE_ACCOUNT_NAME          = azurerm_storage_account.preview.name
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
   }
 

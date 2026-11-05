@@ -46,7 +46,20 @@ test('health reports the expected storage identity', { tag: '@smoke' }, async ({
   const response = await request.get('/api/health');
   expect(response.status(), await response.text()).toBe(200);
   const health = await response.json();
-  expect(health.storageMode).toBe(process.env.EXPECTED_STORAGE_MODE ?? 'production');
+  const expectedMode = process.env.EXPECTED_STORAGE_MODE ?? 'production';
+  expect(health.storageMode).toBe(expectedMode);
   expect(health.storageAccount).toMatch(/^[a-z0-9]+$/);
-  expect(Object.keys(health).sort()).toEqual(['status', 'storageAccount', 'storageMode', 'utc']);
+  expect(health.storageIdentity).toMatch(/^(verified|unverified)$/);
+  if (process.env.REQUIRE_VERIFIED_STORAGE_IDENTITY === 'true') {
+    expect(health.storageIdentity).toBe('verified');
+    expect(health.productionStorageAccount).toMatch(/^[a-z0-9]+$/);
+    if (expectedMode === 'preview') {
+      expect(health.storageAccount).not.toBe(health.productionStorageAccount);
+    } else {
+      expect(health.storageAccount).toBe(health.productionStorageAccount);
+    }
+  }
+  expect(Object.keys(health).sort()).toEqual([
+    'productionStorageAccount', 'status', 'storageAccount', 'storageIdentity', 'storageMode', 'utc',
+  ]);
 });

@@ -467,6 +467,7 @@ jobs:
           CI: "true"
           PW_GLOBAL_TIMEOUT_MS: "300000"
           EXPECTED_STORAGE_MODE: preview
+          REQUIRE_VERIFIED_STORAGE_IDENTITY: "true"
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
         run: npx playwright test specs/smoke.spec.ts --grep @smoke
 
@@ -501,5 +502,6 @@ jobs:
         env:
           CI: "true"
           EXPECTED_STORAGE_MODE: production
+          REQUIRE_VERIFIED_STORAGE_IDENTITY: "true"
           BASE_URL: ${{ needs.deploy.outputs.preview_url }}
         run: npx playwright test specs/smoke.spec.ts --grep @smoke

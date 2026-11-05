@@ -96,19 +96,26 @@ Previews inherit `APP_ENVIRONMENT=production`, but a generated, gitignored
 tables, including POC auth users and sessions. Terraform provisions a separate shared preview
 StorageV2 Standard/LRS account and private `app-data` container, with no CORS or lifecycle policy.
 Previews are disposable and share data with other PRs; production storage is separate.
-Missing/empty preview settings, malformed markers, and unknown modes throw without production
-fallback. No marker preserves production connection resolution. Main deploys reject any marker
-in API source/build/publish artifacts. Health exposes only storage mode and account name.
+Terraform also supplies the non-secret `PRODUCTION_STORAGE_ACCOUNT_NAME` and
+`PREVIEW_STORAGE_ACCOUNT_NAME` settings. The API checks the resolved account against the selected
+mode and returns HTTP 503 with a safe JSON error for missing/empty preview settings, malformed or
+unknown markers, invalid connection strings, and account identity mismatches. It never falls back
+to production from preview mode. No marker preserves production connection resolution. Main
+deploys reject any marker in API source/build/publish artifacts. Health reports `storageMode`,
+`storageAccount`, and `storageIdentity`; it reports `productionStorageAccount` for deployed identity
+checks. Local Azurite without either expected-name setting reports `storageIdentity=unverified`.
 
 `.github/workflows/infra.yml` applies on a qualifying main push after merge (when
 `STARTER_INFRA_CI=true`); PRs only plan, and there is no workflow-dispatch trigger.
 Before the preview account and setting are applied, preview smoke is expected to fail closed.
 To unblock a PR before merge, the operator applies that PR's Terraform with the existing
 starter backend, repository variables, and their own login; agents never apply it.
-While the PR remains open, rerun its CI including deploy so the preview inherits the setting.
+While the PR remains open, rerun its CI including deploy so the preview inherits the settings.
 If an existing preview retains stale inherited settings, recreate it through the normal PR
 close/reopen lifecycle before rerunning CI. Smoke must then report `storageMode=preview`.
-Production smoke requires `storageMode=production`.
+Deployed preview and production smoke both require `storageIdentity=verified`; production smoke
+requires `storageMode=production`, while preview smoke requires `storageMode=preview` and checks
+that the resolved account differs from `productionStorageAccount`.
 Only GET-only `tests/specs/smoke.spec.ts --grep @smoke` is eligible for deployed smoke; never
 run the full suite or manual writes against previews/live. Closing the PR tears down its slot;
 the shared preview account remains. Extra storage costs about $0.01–0.05/month per product
