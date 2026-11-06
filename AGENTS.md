@@ -111,9 +111,45 @@ account name.
 This convention does not change existing behavior, including the opt-in POC auth scaffold.
 
 The Blazor WebAssembly client never reads or invents its own mode setting; when the UI needs the
-runtime mode, it gets it from an API response backed by `AppEnvironment`. Seed demo/business data at
-host startup, never lazily on first request. POC auth users are the one exception: the factory's
-test reset spares the auth tables.
+runtime mode, it gets it from an API response backed by `AppEnvironment`. Seed demo/fixture data at host startup through `EnsureSeededAsync`, never lazily on first request. POC auth users are the one exception: the factory's test reset spares the auth tables.
+
+## Seed and reset contract
+
+`ISeedData.EnsureSeededAsync(CancellationToken)` runs at host startup in every runtime mode.
+Use fixed IDs and upsert the same rows on every call; expose the dataset's string `Version`.
+Register a product seed as `services.AddSingleton<ISeedData, ProductSeed>()` before
+`services.AddSeedContract()`. Without a seed registration, `EmptySeedData` reports version `"0"`.
+The Items sample registers only outside production; deliberate production seeds are a product choice.
+Removing Items and its registrations leaves the empty-seed contract functional.
+
+Explicitly register each business container/table once as `ISeedStore` (`Kind` is `blob` or
+`table`, `Name` is the physical name). For blobs use `new BlobSeedStore("container")`;
+for tables register one `TableSeedStore("table")` instance both as itself and `ISeedStore`.
+Use its `UpsertAsync`/`DeleteAsync` for table writes and `IBlobJsonStore<T>` for JSON blob writes.
+Other business write paths must wrap their entire storage mutation in
+`ResetGate.Shared.WriteAsync`; raw SDK writes bypass this contract. Never register auth tables
+(`pocusers`, `pocsessions`) or host/system containers. Reset enumerates only registered stores.
+
+Anonymous `GET /api/health/ready` returns 503 `{ready:false}` until startup seeding succeeds,
+then 200 `{ready:true,seed_version:"..."}`; failure is logged and stays unready.
+`POST /api/__test/reset-to-seed` accepts no body. It returns a blank 404 unless runtime mode
+is nonproduction, `TEST_RESET_ENABLED` is exactly `true`, the connecting peer is loopback,
+and every `X-Forwarded-For` hop is loopback. The guard checks original Functions invocation
+headers as well as the peer/chain captured before worker middleware; the host proxy rewrites
+forwarded headers on its way to the worker. Only local start scripts enable the setting.
+Deployed SWA denies `/api/__test/*`; local scripts generate an emulator config permitting the
+route while retaining its runtime guards. The POC auth enable script preserves the deployed deny rule.
+
+Reset clears registered stores, calls the seed, then returns
+`{seed_version,tables:{name:count},blobs:{container:count},stores:["blob:container","table:name"]}`.
+Every registered store appears, including empty ones; `stores` is sorted ordinally.
+A concurrent reset returns 409 `{busy:true}`. The process-wide gate reserves reset before draining
+in-flight store writes and holds new writes through the app's stores until reset and counting
+finish; reads proceed.
+The reset's own seed writes may pass the gate. This does not coordinate multiple worker processes.
+`tests/seed-manifest.json` contains exactly `{seed_version,tables,blobs}`; the thin fixture
+client calls the hook at `BASE_URL` and checks the full response against it before each fixture test.
+Products update this manifest with their seed and store registrations.
 
 ## Opt-in POC auth scaffold
 
@@ -121,7 +157,7 @@ Inert by default: with no seed and no flag, `/api/auth/*` returns 404, the Blazo
 hidden, and every route behaves as before. It turns on when `tests/helpers/factory-poc-auth.json`
 exists and `node scripts/enable-poc-auth.mjs` has run (it writes
 `src/App.Api/PocAuth/PocAuthSeed.g.cs`, sets `PocAuth:Enabled` in
-`src/App.Web/wwwroot/appsettings.json`, and removes the `allowedRoles` routes). The API also honors the `POC_AUTH_ENABLED=true` app
+`src/App.Web/wwwroot/appsettings.json`, and removes business `allowedRoles` routes while preserving the reset deny rule). The API also honors the `POC_AUTH_ENABLED=true` app
 setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
 
 - Browser session initialization shares one in-flight probe across callers. Each attempt has a
@@ -153,7 +189,7 @@ setting with no seed, and `POC_AUTH_ENABLED=false` forces it off.
   auth is enabled. A changed password survives restarts because seeding never overwrites an existing user.
   `GET /api/health` stays anonymous.
 - Gate a Function with `PocAuthService.RequireSessionAsync(req, role)`; if the Items sample is present,
-  its `POST`/`DELETE` `/api/items` are already gated when enabled; gate your own write endpoints the same way. The enable script also drops the `allowedRoles`
+  its `POST`/`DELETE` `/api/items` are already gated when enabled; gate your own write endpoints the same way. The enable script also drops business `allowedRoles`
   routes from `staticwebapp.config.json`, which would otherwise 401 sessions before the API sees them.
 - Write response bodies with `WriteAsJsonAsync`/`WriteStringAsync` only.
 - Specs: `tests/specs/poc-auth.spec.ts` skips itself without the fixture; `loginAs(page, user)` in

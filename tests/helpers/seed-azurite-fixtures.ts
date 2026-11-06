@@ -1,66 +1,35 @@
-import * as crypto from 'node:crypto';
-import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
+import { request } from '@playwright/test';
+import { isDeepStrictEqual } from 'node:util';
+import manifest from '../seed-manifest.json';
+import { ports } from './ports';
 
-const connectionString = process.env.AZURITE_CONNECTION_STRING ?? 'UseDevelopmentStorage=true';
-const containerName = 'app-data';
-const itemsPrefix = 'items';
-
-/** A fixture `Item` to seed. `id`/`createdAt` default when omitted. */
-export interface SeedItem {
-  id?: string;
-  name: string;
-  description?: string | null;
-  createdAt?: string;
-}
-
-// Fixtures are written directly to blob storage, bypassing the API's own
-// safeguards, so this guard is the only thing standing between a mistyped
-// env var and seeding/wiping a real storage account. Never widen it.
-export function validateAzuriteConnectionString(value: string): void {
-  if (value !== 'UseDevelopmentStorage=true') {
-    throw new Error('Fixture seeding is restricted to the standard local Azurite account (Azurite emulator only).');
+/** The fixture response must exactly match the checked-in seed manifest. */
+export function assertSeedManifest(value: unknown): void {
+  const expectedStores = [
+    ...Object.keys(manifest.tables).map((name) => `table:${name}`),
+    ...Object.keys(manifest.blobs).map((name) => `blob:${name}`),
+  ].sort();
+  // Fixtures reset through the API rather than writing storage directly.
+  // The API owns the loopback and runtime guards; this check prevents
+  // tests from continuing with an unexpected fixture dataset.
+  if (!isDeepStrictEqual(value, { ...manifest, stores: expectedStores })) {
+    throw new Error(`Seed manifest mismatch: expected ${JSON.stringify({ ...manifest, stores: expectedStores })}, received ${JSON.stringify(value)}`);
   }
 }
 
-function getContainerClient(): ContainerClient {
-  validateAzuriteConnectionString(connectionString);
-  const service = BlobServiceClient.fromConnectionString(connectionString);
-  return service.getContainerClient(containerName);
-}
-
-/** Seeds `Item` JSON blobs at `items/{id}.json`, matching `BlobJsonStore<Item>` exactly (camelCase, `Web` serializer defaults). */
-export async function seedItems(items: SeedItem[]): Promise<void> {
-  const container = getContainerClient();
-  await container.createIfNotExists();
-
-  await Promise.all(
-    items.map(async (item) => {
-      const id = item.id ?? crypto.randomUUID().replace(/-/g, '');
-      const body = {
-        id,
-        name: item.name,
-        description: item.description ?? null,
-        createdAt: item.createdAt ?? '2026-01-01T12:00:00.000Z',
-      };
-      const blob = container.getBlockBlobClient(`${itemsPrefix}/${id}.json`);
-      const payload = JSON.stringify(body);
-      await blob.upload(payload, Buffer.byteLength(payload), {
-        blobHTTPHeaders: { blobContentType: 'application/json' },
-      });
-    }),
-  );
-}
-
-/**
- * Deletes every seeded item blob but leaves the `app-data` container itself
- * in place — `BlobJsonStore.ListKeysAsync` 404s on a missing container, which
- * `GetItems` turns into a 500 rather than an empty list.
- */
-export async function clearItems(): Promise<void> {
-  const container = getContainerClient();
-  await container.createIfNotExists();
-
-  for await (const blob of container.listBlobsFlat({ prefix: `${itemsPrefix}/` })) {
-    await container.getBlockBlobClient(blob.name).deleteIfExists();
-  }
+/** Restores the fixed Item JSON blobs through the application seed hook. */
+export async function resetToSeed(): Promise<void> {
+  const client = await request.newContext({ baseURL: process.env.BASE_URL ?? `http://localhost:${ports.SWA_PORT}` });
+  try {
+    /**
+     * Clears registered business stores and restores their declared seed.
+     * The app leaves auth tables and host containers alone; tests never
+     * enumerate or delete storage themselves.
+     */
+    const response = await client.post('/api/__test/reset-to-seed');
+    const body = await response.text();
+    if (response.status() !== 200) throw new Error(`Seed reset failed: HTTP ${response.status()}: ${body}`);
+    try { assertSeedManifest(JSON.parse(body)); }
+    catch (error) { throw new Error(`Seed reset response: ${body}: ${error}`); }
+  } finally { await client.dispose(); }
 }

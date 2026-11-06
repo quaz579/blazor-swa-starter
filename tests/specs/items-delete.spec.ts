@@ -1,17 +1,14 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/seeded-test';
 import { loginAsAuthenticatedUser } from '../helpers/auth';
-import { clearItems, seedItems } from '../helpers/seed-azurite-fixtures';
 import { ItemsPage } from '../pages/items-page';
 
 test.beforeEach(async ({ context }) => {
-  await clearItems();
   await loginAsAuthenticatedUser(context);
 });
 
 test('deleting a row removes it, and it stays gone after a reload', async ({ page }) => {
   const items = new ItemsPage(page);
-  const name = 'Fixture Delete';
-  await seedItems([{ name }]);
+  const name = 'Fixture Newest';
 
   await items.goto();
   const row = items.rowByName(name);

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/seeded-test';
 import { HomePage } from '../pages/home-page';
 import { ItemsPage } from '../pages/items-page';
 

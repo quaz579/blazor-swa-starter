@@ -1,5 +1,6 @@
 using System.Text.Json;
 using App.Core.Storage;
+using App.Api.Seeding;
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -54,19 +55,22 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
     public async Task PutAsync(string key, T value, CancellationToken cancellationToken = default)
     {
         var blobPath = BlobPathFor(key);
-        await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+        await ResetGate.Shared.WriteAsync(async () =>
+        {
+            await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
 
-        var blobClient = _containerClient.GetBlobClient(blobPath);
-        var json = JsonSerializer.Serialize(value, SerializerOptions);
+            var blobClient = _containerClient.GetBlobClient(blobPath);
+            var json = JsonSerializer.Serialize(value, SerializerOptions);
 
-        await blobClient.UploadAsync(BinaryData.FromString(json), overwrite: true, cancellationToken: cancellationToken);
-        _logger.LogInformation("Stored {Prefix} blob for key {Key}", _prefix, key);
+            await blobClient.UploadAsync(BinaryData.FromString(json), overwrite: true, cancellationToken: cancellationToken);
+            _logger.LogInformation("Stored {Prefix} blob for key {Key}", _prefix, key);
+        }, cancellationToken);
     }
 
     public async Task<IReadOnlyList<string>> ListKeysAsync(string prefix = "", CancellationToken cancellationToken = default)
     {
         var validatedPrefix = ValidatePrefix(prefix);
-        await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+        if (!await _containerClient.ExistsAsync(cancellationToken)) return Array.Empty<string>();
 
         var blobPrefix = $"{_prefix}/{validatedPrefix}";
         var keys = new List<string>();
@@ -86,8 +90,11 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
     public async Task<bool> DeleteAsync(string key, CancellationToken cancellationToken = default)
     {
         var blobClient = _containerClient.GetBlobClient(BlobPathFor(key));
-        var response = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
-        return response.Value;
+        return await ResetGate.Shared.WriteAsync(async () =>
+        {
+            var response = await blobClient.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+            return response.Value;
+        }, cancellationToken);
     }
 
     private string BlobPathFor(string key)

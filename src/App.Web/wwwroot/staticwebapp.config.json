@@ -4,6 +4,10 @@
   },
   "routes": [
     {
+      "route": "/api/__test/*",
+      "allowedRoles": ["seed-reset-disabled"]
+    },
+    {
       "route": "/version.json",
       "headers": {
         "Cache-Control": "no-store"

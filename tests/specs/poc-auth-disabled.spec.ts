@@ -1,5 +1,5 @@
 import { gotoApp } from '../helpers/app-ready';
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../helpers/seeded-test';
 import { pocAuthEnabled } from '../helpers/poc-auth';
 
 test.describe('POC auth disabled', () => {
