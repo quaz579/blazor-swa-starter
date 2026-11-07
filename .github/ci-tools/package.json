@@ -1,0 +1,10 @@
+{
+  "name": "ci-tools",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "azure-functions-core-tools": "4.16.0",
+    "@azure/static-web-apps-cli": "2.1.0",
+    "azurite": "3.37.0"
+  }
+}
