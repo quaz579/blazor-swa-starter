@@ -1,5 +1,6 @@
 using App.Api.Storage;
 using App.Core.Models;
+using App.Core.Storage;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -117,5 +118,76 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
 
         // Assert
         deleted.Should().BeFalse();
+    }
+
+    [AzuriteFact]
+    public async Task TryCreateAsync_ExistingKey_ReturnsConflict()
+    {
+        var item = new Item { Id = "conditional-create", Name = "First" };
+
+        var first = await _store.TryCreateAsync(item.Id, item);
+        var second = await _store.TryCreateAsync(item.Id, new Item { Id = item.Id, Name = "Second" });
+
+        var success = first.Should().BeOfType<VersionedWriteResult.Success>().Subject;
+        success.ETag.Should().NotBeNullOrWhiteSpace();
+        second.Should().Be(VersionedWriteResult.Conflict.Instance);
+    }
+
+    [AzuriteFact]
+    public async Task TryReplaceAsync_ConcurrentWritersOnOneETag_ExactlyOneWins()
+    {
+        const string key = "conditional-race";
+        await _store.TryCreateAsync(key, new Item { Id = key, Name = "Initial" });
+        var current = await _store.GetVersionedAsync(key);
+        current.Should().NotBeNull();
+
+        var results = await Task.WhenAll(
+            _store.TryReplaceAsync(key, new Item { Id = key, Name = "Writer one" }, current!.ETag),
+            _store.TryReplaceAsync(key, new Item { Id = key, Name = "Writer two" }, current.ETag));
+
+        results.Count(result => result is VersionedWriteResult.Success).Should().Be(1);
+        results.Count(result => result is VersionedWriteResult.Conflict).Should().Be(1);
+    }
+
+    [AzuriteFact]
+    public async Task TryReplaceAsync_StaleETag_ReturnsConflictAndKeepsPriorData()
+    {
+        const string key = "conditional-stale";
+        var created = await _store.TryCreateAsync(key, new Item { Id = key, Name = "Initial" });
+        created.Should().BeOfType<VersionedWriteResult.Success>();
+        var initial = await _store.GetVersionedAsync(key);
+        initial.Should().NotBeNull();
+        var committed = await _store.TryReplaceAsync(key, new Item { Id = key, Name = "Committed" }, initial!.ETag);
+        committed.Should().BeOfType<VersionedWriteResult.Success>();
+
+        var stale = await _store.TryReplaceAsync(key, new Item { Id = key, Name = "Stale" }, initial.ETag);
+        var after = await _store.GetVersionedAsync(key);
+
+        stale.Should().Be(VersionedWriteResult.Conflict.Instance);
+        after!.Value.Name.Should().Be("Committed");
+    }
+
+    [AzuriteFact]
+    public async Task TryReplaceAsync_SuccessfulReplace_ChangesETag()
+    {
+        const string key = "conditional-etag";
+        await _store.TryCreateAsync(key, new Item { Id = key, Name = "Initial" });
+        var initial = await _store.GetVersionedAsync(key);
+        initial.Should().NotBeNull();
+
+        var replaced = await _store.TryReplaceAsync(key, new Item { Id = key, Name = "Updated" }, initial!.ETag);
+        var after = await _store.GetVersionedAsync(key);
+
+        var success = replaced.Should().BeOfType<VersionedWriteResult.Success>().Subject;
+        success.ETag.Should().NotBe(initial.ETag);
+        after!.ETag.Should().Be(success.ETag);
+    }
+
+    [AzuriteFact]
+    public async Task GetVersionedAsync_MissingKey_ReturnsNull()
+    {
+        var result = await _store.GetVersionedAsync($"missing-{Guid.NewGuid():N}");
+
+        result.Should().BeNull();
     }
 }

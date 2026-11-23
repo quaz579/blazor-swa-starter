@@ -73,3 +73,9 @@ port; the response must match `tests/seed-manifest.json` plus its sorted `stores
 this always lands on the Azurite connection string; `src/App.Api/local.settings.json` is
 deliberately committed (it holds only `UseDevelopmentStorage=true`) so a fresh clone runs with
 zero setup.
+
+Field encryption also needs no local setup. With no encryption settings, nonproduction mode,
+and loopback Azurite storage with no deployed account identity configured, the API selects its
+public development-only key and logs a warning. local.settings.json contains no encryption key.
+See [Security/README.md](src/App.Api/Security/README.md) for the default's limits and production
+configuration.

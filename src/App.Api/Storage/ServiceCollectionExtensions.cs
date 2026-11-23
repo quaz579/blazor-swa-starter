@@ -18,12 +18,14 @@ public static class ServiceCollectionExtensions
         where T : class
     {
         services.AddSingleton(new BlobJsonStoreOptions<T> { Prefix = prefix });
-        services.AddSingleton<IBlobJsonStore<T>>(sp =>
+        services.AddSingleton<BlobJsonStore<T>>(sp =>
         {
             var options = sp.GetRequiredService<BlobJsonStoreOptions<T>>();
             var logger = sp.GetRequiredService<ILogger<BlobJsonStore<T>>>();
             return new BlobJsonStore<T>(StorageConnection.ResolveConnectionString(), options, logger);
         });
+        services.AddSingleton<IBlobJsonStore<T>>(sp => sp.GetRequiredService<BlobJsonStore<T>>());
+        services.AddSingleton<IVersionedBlobJsonStore<T>>(sp => sp.GetRequiredService<BlobJsonStore<T>>());
 
         return services;
     }

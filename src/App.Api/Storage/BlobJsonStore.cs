@@ -15,7 +15,7 @@ namespace App.Api.Storage;
 /// <c>services.AddBlobJsonStore&lt;Note&gt;("notes")</c> — see
 /// <see cref="App.Api.Storage.ServiceCollectionExtensions.AddBlobJsonStore{T}"/>.
 /// </summary>
-public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
+public sealed class BlobJsonStore<T> : IBlobJsonStore<T>, IVersionedBlobJsonStore<T> where T : class
 {
     private const string ContainerName = "app-data";
 
@@ -50,6 +50,84 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T> where T : class
         {
             return null;
         }
+    }
+
+    public async Task<Versioned<T>?> GetVersionedAsync(string key, CancellationToken cancellationToken = default)
+    {
+        var blobClient = _containerClient.GetBlobClient(BlobPathFor(key));
+
+        try
+        {
+            var download = await blobClient.DownloadContentAsync(cancellationToken);
+            var value = JsonSerializer.Deserialize<T>(download.Value.Content.ToString(), SerializerOptions);
+            return value is null ? null : new Versioned<T>(value, download.Value.Details.ETag.ToString());
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404 && ex.ErrorCode is "BlobNotFound" or "ContainerNotFound")
+        {
+            return null;
+        }
+    }
+
+    public async Task<VersionedWriteResult> TryCreateAsync(
+        string key,
+        T value,
+        CancellationToken cancellationToken = default)
+    {
+        var blobPath = BlobPathFor(key);
+        return await ResetGate.Shared.WriteAsync<VersionedWriteResult>(async () =>
+        {
+            await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+            var blobClient = _containerClient.GetBlobClient(blobPath);
+            var json = JsonSerializer.Serialize(value, SerializerOptions);
+
+            try
+            {
+                var response = await blobClient.UploadAsync(
+                    BinaryData.FromString(json),
+                    new BlobUploadOptions
+                    {
+                        Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All }
+                    },
+                    cancellationToken);
+                return new VersionedWriteResult.Success(response.Value.ETag.ToString());
+            }
+            catch (RequestFailedException exception) when (exception.Status is 409 or 412)
+            {
+                return VersionedWriteResult.Conflict.Instance;
+            }
+        }, cancellationToken);
+    }
+
+    public async Task<VersionedWriteResult> TryReplaceAsync(
+        string key,
+        T value,
+        string expectedETag,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedETag);
+        var blobPath = BlobPathFor(key);
+        return await ResetGate.Shared.WriteAsync<VersionedWriteResult>(async () =>
+        {
+            await _containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+            var blobClient = _containerClient.GetBlobClient(blobPath);
+            var json = JsonSerializer.Serialize(value, SerializerOptions);
+
+            try
+            {
+                var response = await blobClient.UploadAsync(
+                    BinaryData.FromString(json),
+                    new BlobUploadOptions
+                    {
+                        Conditions = new BlobRequestConditions { IfMatch = new ETag(expectedETag) }
+                    },
+                    cancellationToken);
+                return new VersionedWriteResult.Success(response.Value.ETag.ToString());
+            }
+            catch (RequestFailedException exception) when (exception.Status is 409 or 412)
+            {
+                return VersionedWriteResult.Conflict.Instance;
+            }
+        }, cancellationToken);
     }
 
     public async Task PutAsync(string key, T value, CancellationToken cancellationToken = default)
