@@ -46,7 +46,7 @@ only; `App.Tests` is the one project allowed to reference all three.
   string that identifies the field and record. Do not hand-roll cryptography or add product-
   specific encryption-key settings. Follow
   [src/App.Api/Security/README.md](src/App.Api/Security/README.md).
-- Use IVersionedBlobJsonStore&lt;T&gt; for optimistic concurrency on JSON blobs. Do not implement
+- Use `IVersionedBlobJsonStore<T>` for optimistic concurrency on JSON blobs. Do not implement
   another ETag repository over the Azure SDK. See
   [src/App.Api/Storage/README.md](src/App.Api/Storage/README.md).
 - Use the registered TimeProvider for time-sensitive behavior; do not add another clock

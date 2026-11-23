@@ -194,6 +194,41 @@ public sealed class FieldEncryptionTests : IDisposable
             .WithMessage("field encryption is not configured: set FIELD_ENCRYPTION_ACTIVE_KEY_ID and FIELD_ENCRYPTION_KEYS__<id>");
     }
 
+    [Fact]
+    public void AddFieldEncryption_DevelopmentKeyWithDeployedIdentityAndMissingMode_RegistersFailClosedProtector()
+    {
+        Environment.SetEnvironmentVariable("PRODUCTION_STORAGE_ACCOUNT_NAME", "productionaccount");
+        Environment.SetEnvironmentVariable("PREVIEW_STORAGE_ACCOUNT_NAME", "previewaccount");
+        using var provider = BuildProvider(Configuration(
+            ("FIELD_ENCRYPTION_ACTIVE_KEY_ID", "dev"),
+            ("FIELD_ENCRYPTION_KEYS:dev", FieldEncryptionConfiguration.DevelopmentKeyBase64)));
+        var protector = provider.GetRequiredService<IFieldProtector>();
+
+        provider.GetRequiredService<FieldEncryptionStatus>().Mode.Should().Be(FieldEncryptionStatus.NotConfigured);
+        Action act = () => protector.Protect("value", "profile.name");
+
+        act.Should().Throw<FieldEncryptionException>()
+            .WithMessage("field encryption is not configured: set FIELD_ENCRYPTION_ACTIVE_KEY_ID and FIELD_ENCRYPTION_KEYS__<id>");
+    }
+
+    [Fact]
+    public void AddFieldEncryption_DevelopmentKeyWithRemoteStorage_RegistersFailClosedProtector()
+    {
+        Environment.SetEnvironmentVariable(
+            "AZURE_STORAGE_CONNECTION_STRING",
+            "DefaultEndpointsProtocol=https;AccountName=remoteaccount;AccountKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=;BlobEndpoint=https://remoteaccount.blob.core.windows.net;");
+        using var provider = BuildProvider(Configuration(
+            ("FIELD_ENCRYPTION_ACTIVE_KEY_ID", "dev"),
+            ("FIELD_ENCRYPTION_KEYS:dev", FieldEncryptionConfiguration.DevelopmentKeyBase64)));
+        var protector = provider.GetRequiredService<IFieldProtector>();
+
+        provider.GetRequiredService<FieldEncryptionStatus>().Mode.Should().Be(FieldEncryptionStatus.NotConfigured);
+        Action act = () => protector.Protect("value", "profile.name");
+
+        act.Should().Throw<FieldEncryptionException>()
+            .WithMessage("field encryption is not configured: set FIELD_ENCRYPTION_ACTIVE_KEY_ID and FIELD_ENCRYPTION_KEYS__<id>");
+    }
+
     [Theory]
     [InlineData("not-base64", "test")]
     [InlineData("AA==", "test")]

@@ -1,6 +1,6 @@
 # Versioned JSON blob store
 
-Use IVersionedBlobJsonStore&lt;T&gt; when concurrent writers must not silently overwrite each other.
+Use `IVersionedBlobJsonStore<T>` when concurrent writers must not silently overwrite each other.
 The store uses Azure Blob Storage ETags as opaque tokens and keeps the existing camelCase JSON
 serialization, storage resolver, prefix, and reset write gate.
 
@@ -16,10 +16,11 @@ serialization, storage resolver, prefix, and reset write gate.
             await customers.TryReplaceAsync(customer.Id, customer, expectedETag, ct);
     }
 
-GetVersionedAsync(key) returns Versioned&lt;T&gt; with the decoded value and its ETag, or null when
+GetVersionedAsync(key) returns `Versioned<T>` with the decoded value and its ETag, or null when
 the blob or container is missing. TryCreateAsync uses create-only conditions.
-TryReplaceAsync requires the ETag from a prior read. Both return VersionedWriteResult.Success
-with the new ETag, or VersionedWriteResult.Conflict when Azure returns 409 or 412. Other storage
+TryReplaceAsync requires a specific, non-empty ETag from a prior read; null, empty, whitespace,
+and `*` values are rejected. Both return VersionedWriteResult.Success with the new ETag, or
+VersionedWriteResult.Conflict when Azure returns 409 or 412. Other storage
 and JSON failures propagate. The store does not retry a conflict; reread and recompute only when
 the domain operation is safe to retry.
 
@@ -27,8 +28,8 @@ Register both storage interfaces together as usual:
 
     services.AddBlobJsonStore<Customer>("customers");
 
-Resolve IBlobJsonStore<Customer> for unconditional operations or
-IVersionedBlobJsonStore&lt;Customer&gt; for optimistic concurrency. Both interfaces resolve to the
+Resolve `IBlobJsonStore<Customer>` for unconditional operations or
+`IVersionedBlobJsonStore<Customer>` for optimistic concurrency. Both interfaces resolve to the
 same singleton. There are no new storage settings; local Azurite and deployed storage use the
 existing storage connection and identity rules. Writes participate in ResetGate.
 

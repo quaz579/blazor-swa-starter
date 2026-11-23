@@ -168,6 +168,25 @@ public sealed class BlobJsonStoreAzuriteTests : IAsyncLifetime
     }
 
     [AzuriteFact]
+    public async Task TryReplaceAsync_NullEmptyWhitespaceOrWildcardETag_ThrowsAndKeepsStoredValue()
+    {
+        const string key = "conditional-invalid-etag";
+        await _store.TryCreateAsync(key, new Item { Id = key, Name = "Original" });
+
+        foreach (var expectedETag in new string?[] { null, "", " ", "*" })
+        {
+            Func<Task> act = () => _store.TryReplaceAsync(
+                key,
+                new Item { Id = key, Name = "Must not replace" },
+                expectedETag!);
+
+            await act.Should().ThrowAsync<ArgumentException>();
+            var after = await _store.GetAsync(key);
+            after!.Name.Should().Be("Original");
+        }
+    }
+
+    [AzuriteFact]
     public async Task TryReplaceAsync_SuccessfulReplace_ChangesETag()
     {
         const string key = "conditional-etag";

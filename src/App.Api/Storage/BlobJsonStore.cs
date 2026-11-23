@@ -104,7 +104,8 @@ public sealed class BlobJsonStore<T> : IBlobJsonStore<T>, IVersionedBlobJsonStor
         string expectedETag,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(expectedETag);
+        if (string.IsNullOrWhiteSpace(expectedETag) || expectedETag == "*")
+            throw new ArgumentException("Expected ETag must be a specific, non-empty value.", nameof(expectedETag));
         var blobPath = BlobPathFor(key);
         return await ResetGate.Shared.WriteAsync<VersionedWriteResult>(async () =>
         {

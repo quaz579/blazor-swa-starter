@@ -5,7 +5,7 @@
 - Use IFieldProtector with a stable purpose string for sensitive fields; do not hand-roll
   cryptography or add product-specific encryption-key settings. See
   [src/App.Api/Security/README.md](../src/App.Api/Security/README.md).
-- Use IVersionedBlobJsonStore&lt;T&gt; for optimistic concurrency and the registered TimeProvider
+- Use `IVersionedBlobJsonStore<T>` for optimistic concurrency and the registered TimeProvider
   for time-sensitive behavior. See
   [src/App.Api/Storage/README.md](../src/App.Api/Storage/README.md) and AGENTS.md.
 

@@ -88,9 +88,9 @@ internal static class FieldEncryptionConfiguration
             if (!keys.ContainsKey(activeKeyId))
                 throw InvalidConfiguration();
 
-            var isProduction = AppEnvironment.IsProduction;
             var ring = new FieldEncryptionKeyRing(activeKeyId, keys);
-            if (isProduction && (ring.ContainsDevelopmentKeyId || ring.ContainsDevelopmentKey()))
+            if ((ring.ContainsDevelopmentKeyId || ring.ContainsDevelopmentKey()) &&
+                !CanUseDevelopmentKey(configuration))
                 return new Registration(FieldEncryptionStatus.NotConfigured, null);
 
             return new Registration(FieldEncryptionStatus.Configured, ring);
@@ -105,35 +105,38 @@ internal static class FieldEncryptionConfiguration
 
     private static Registration ResolveWithoutConfiguration(IConfiguration configuration)
     {
-        var isProduction = AppEnvironment.IsProduction;
-        if (isProduction || HasStorageIdentitySetting(configuration))
+        if (!CanUseDevelopmentKey(configuration))
             return new Registration(FieldEncryptionStatus.NotConfigured, null);
+
+        var key = GetDevelopmentKey();
+        try
+        {
+            return new Registration(
+                FieldEncryptionStatus.DevelopmentDefault,
+                new FieldEncryptionKeyRing(DevelopmentKeyId, new Dictionary<string, byte[]> { [DevelopmentKeyId] = key }));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+        }
+    }
+
+    private static bool CanUseDevelopmentKey(IConfiguration configuration)
+    {
+        if (AppEnvironment.IsProduction || HasStorageIdentitySetting(configuration))
+            return false;
 
         try
         {
             var storage = StorageConnection.Resolve();
             var storageUri = new Azure.Storage.Blobs.BlobServiceClient(storage.ConnectionString).Uri;
-            if (storage.Mode == "production" && storage.Identity == "unverified" &&
-                storage.ProductionAccount is null && storageUri.IsLoopback)
-            {
-                var key = GetDevelopmentKey();
-                try
-                {
-                    return new Registration(
-                        FieldEncryptionStatus.DevelopmentDefault,
-                        new FieldEncryptionKeyRing(DevelopmentKeyId, new Dictionary<string, byte[]> { [DevelopmentKeyId] = key }));
-                }
-                finally
-                {
-                    CryptographicOperations.ZeroMemory(key);
-                }
-            }
+            return storage.Mode == "production" && storage.Identity == "unverified" &&
+                   storage.ProductionAccount is null && storageUri.IsLoopback;
         }
         catch (StorageConfigurationException)
         {
+            return false;
         }
-
-        return new Registration(FieldEncryptionStatus.NotConfigured, null);
     }
 
     private static bool HasStorageIdentitySetting(IConfiguration configuration)
