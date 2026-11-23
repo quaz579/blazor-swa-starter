@@ -60,6 +60,7 @@ test('health reports the expected storage identity', { tag: '@smoke' }, async ({
     }
   }
   expect(Object.keys(health).sort()).toEqual([
-    'productionStorageAccount', 'status', 'storageAccount', 'storageIdentity', 'storageMode', 'utc',
+    'fieldEncryptionMode', 'productionStorageAccount', 'status', 'storageAccount', 'storageIdentity', 'storageMode', 'utc',
   ]);
+  expect(health.fieldEncryptionMode).toMatch(/^(development-default|configured|not-configured)$/);
 });

@@ -19,7 +19,7 @@ App.Core  ◄──  App.Api
 App.Core  ◄──  App.Web
 ```
 
-`App.Core` (models + `IBlobJsonStore<T>`) has zero `ProjectReference`s — it never references
+`App.Core` (models + storage/security interfaces) has zero `ProjectReference`s — it never references
 `App.Api` or `App.Web`. Verify this yourself by reading `src/App.Core/App.Core.csproj` rather
 than assuming it's still true after a change. `App.Api` and `App.Web` each reference `App.Core`
 only; `App.Tests` is the one project allowed to reference all three.
@@ -39,6 +39,18 @@ only; `App.Tests` is the one project allowed to reference all three.
 - Invalid keys and prohibited prefix characters throw `ArgumentException` before storage
   interaction. Cancellation and operational or JSON serialization/deserialization failures
   propagate to callers; they are not converted into missing-item results.
+
+## Building blocks — use these, never write your own
+
+- Protect sensitive string fields with App.Core.Security.IFieldProtector and a stable purpose
+  string that identifies the field and record. Do not hand-roll cryptography or add product-
+  specific encryption-key settings. Follow
+  [src/App.Api/Security/README.md](src/App.Api/Security/README.md).
+- Use `IVersionedBlobJsonStore<T>` for optimistic concurrency on JSON blobs. Do not implement
+  another ETag repository over the Azure SDK. See
+  [src/App.Api/Storage/README.md](src/App.Api/Storage/README.md).
+- Use the registered TimeProvider for time-sensitive behavior; do not add another clock
+  abstraction.
 
 ## Task → agent routing
 
@@ -213,7 +225,7 @@ Match this convention for new tests; don't invent a different shape.
 
 ```
 blazor-swa-starter/
-├── src/App.Core/               domain models + IBlobJsonStore<T> — no Azure SDK, no ProjectReferences
+├── src/App.Core/               domain models + storage/security interfaces — no Azure SDK, no ProjectReferences
 ├── src/App.Api/                Azure Functions isolated-worker app; BlobJsonStore<T> impl; the managed API
 ├── src/App.Web/                Blazor WebAssembly PWA
 ├── src/App.Tests/               xunit + bUnit + NSubstitute + AwesomeAssertions, mirroring Core/Api/Web
@@ -226,20 +238,19 @@ blazor-swa-starter/
 └── .github/workflows/            ci.yml, pr-cleanup.yml, copilot-setup-steps.yml
 ```
 
-## The one canonical doc rule
+## Canonical documentation
 
-There are exactly seven markdown **documentation** files in this repo: `README.md`, `AGENTS.md`,
-`DEPLOY.md`, `LOCAL-DEV.md`, `TESTING.md`, `CLAUDE.md` (one line, `@AGENTS.md`), and
-`.github/copilot-instructions.md` (a pointer at this file). The role contracts under `agents/`
-and their generated view under `.claude/agents/` are not part of this set — they are contracts,
-not docs, so adding or editing a role file doesn't count toward or against the seven. Every topic
-among the seven has exactly one home —
-deployment lives in `DEPLOY.md`, testing in `TESTING.md`, and so on. **New work updates the
-canonical doc for its topic; it never adds a new markdown file.** A prior version of this
-starter had 17 root markdown files with three mutually contradictory deployment stories; the
-fix was collapsing them, not writing an 18th. If you find yourself wanting to add
-`docs/something.md` or a `README` inside a subdirectory, put that content in the doc that
-already owns the topic instead.
+The fixed root documentation set is `README.md`, `AGENTS.md`, `DEPLOY.md`, `LOCAL-DEV.md`,
+`TESTING.md`, and `.github/copilot-instructions.md`. The existing `CLAUDE.md` remains a
+one-line pointer to this file. The role contracts under `agents/` and their generated view under
+`.claude/agents/` are contracts, not docs. Each root-doc topic has one home: deployment lives in
+`DEPLOY.md`, testing in `TESTING.md`, and so on.
+
+The code-adjacent how-to READMEs in `src/App.Api/Security/` and `src/App.Api/Storage/` are
+deliberate exceptions for the reusable building blocks implemented there. Keep their usage,
+configuration, and test examples beside that code, and link to them from the root docs. Do not
+add other Markdown documentation files or subdirectory READMEs; put their content in the root
+doc that owns the topic.
 
 ## How to prove your change works
 

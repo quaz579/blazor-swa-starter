@@ -35,6 +35,17 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
+    public void AddBlobJsonStore_BothInterfaces_ResolveTheSameSingleton()
+    {
+        using var provider = new ServiceCollection().AddLogging()
+            .AddBlobJsonStore<Item>("custom-items")
+            .BuildServiceProvider();
+
+        provider.GetRequiredService<IBlobJsonStore<Item>>()
+            .Should().BeSameAs(provider.GetRequiredService<IVersionedBlobJsonStore<Item>>());
+    }
+
+    [Fact]
     public void AddBlobJsonStore_DifferentModelTypes_KeepsStoresAndPrefixesSeparate()
     {
         using var provider = new ServiceCollection().AddLogging()

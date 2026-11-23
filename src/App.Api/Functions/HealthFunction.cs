@@ -1,4 +1,5 @@
 using System.Net;
+using App.Api.Security;
 using App.Api.Storage;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -10,11 +11,16 @@ public sealed class HealthFunction
 {
     private readonly ILogger<HealthFunction> _logger;
     private readonly TimeProvider _timeProvider;
+    private readonly FieldEncryptionStatus? _fieldEncryptionStatus;
 
-    public HealthFunction(ILogger<HealthFunction> logger, TimeProvider? timeProvider = null)
+    public HealthFunction(
+        ILogger<HealthFunction> logger,
+        TimeProvider? timeProvider = null,
+        FieldEncryptionStatus? fieldEncryptionStatus = null)
     {
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _fieldEncryptionStatus = fieldEncryptionStatus;
     }
 
     /// <summary>GET /api/health</summary>
@@ -23,6 +29,7 @@ public sealed class HealthFunction
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] HttpRequestData req,
         CancellationToken cancellationToken)
     {
+        _fieldEncryptionStatus?.LogDevelopmentWarning(_logger);
         _logger.LogInformation("Processing health check request");
 
         var storage = StorageConnection.Identity();
@@ -34,7 +41,8 @@ public sealed class HealthFunction
             storageMode = storage.Mode,
             storageAccount = storage.Account,
             storageIdentity = storage.Identity,
-            productionStorageAccount = storage.ProductionAccount
+            productionStorageAccount = storage.ProductionAccount,
+            fieldEncryptionMode = _fieldEncryptionStatus?.Mode ?? FieldEncryptionStatus.NotConfigured
         }, cancellationToken);
         return response;
     }

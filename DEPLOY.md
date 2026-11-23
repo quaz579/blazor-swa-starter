@@ -77,6 +77,25 @@ Actions tab once `apply` finishes, or just push again. The sequence above — cr
 without pushing, run `terraform apply` to completion, push only afterward — avoids the red run
 entirely.
 
+## Production field encryption settings
+
+The API may start with fieldEncryptionMode=not-configured so products that do not encrypt fields
+keep deploying. Before a product calls IFieldProtector in production or a PR preview, generate a
+key with openssl rand -base64 32 and set these server-side application settings on the Static Web
+App:
+
+| Setting | Example |
+|---|---|
+| FIELD_ENCRYPTION_ACTIVE_KEY_ID | k2026 |
+| FIELD_ENCRYPTION_KEYS__k2026 | The generated base64 value |
+
+Set them in Azure Static Web App application settings or an approved secret manager. Configure
+each deployed environment that reads the data, including preview environments when they read
+encrypted preview data. Terraform does not manage these encryption keys in this pass. Never put
+key material in the repository, Terraform variables, CI logs, or WebAssembly app settings. For
+rotation, retain old key IDs while their ciphertext remains; see
+[src/App.Api/Security/README.md](src/App.Api/Security/README.md).
+
 ## CI/CD
 
 Every push to `main` and every pull request runs `.github/workflows/ci.yml`: `build-test`

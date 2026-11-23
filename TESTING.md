@@ -29,6 +29,22 @@ cleans up only the keys it created in `DisposeAsync`, so tests never collide and
 suite after the local E2E stack starts and rejects any skipped tests, so emulator-backed checks
 are required by the E2E gate.
 
+The FieldEncryptionTestKit in src/App.Tests/Security/ creates deterministic test key rings and
+provides helpers to tamper with or truncate an envelope and change its purpose. For example:
+
+    var protector = FieldEncryptionTestKit.CreateProtector();
+    var envelope = protector.Protect("value", "customer:123:email");
+    protector.Unprotect(envelope, "customer:123:email").Should().Be("value");
+
+FieldEncryptionTests covers round-trips, randomized envelopes, wrong purposes and keys,
+tampering, truncation, malformed configuration, local defaults, production refusal, and key
+rotation. FieldEncryptionAzuriteTests stores a protected value through the real blob store and
+checks the blob does not contain its plaintext. BlobJsonStoreAzuriteTests also covers versioned
+create, replace, conflicts, and ETag changes. Run with Azurite so these [AzuriteFact] tests
+execute instead of skip; see the storage and
+[versioned-store how-to](src/App.Api/Storage/README.md) and
+[encryption how-to](src/App.Api/Security/README.md).
+
 ## Test naming and TDD
 
 Method names follow `MethodName_Scenario_ExpectedBehavior`

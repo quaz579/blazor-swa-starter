@@ -1,6 +1,8 @@
 using App.Api.Functions;
+using App.Api.Security;
 using App.Api.Storage;
 using App.Tests.PocAuth;
+using App.Tests.Security;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -27,6 +29,20 @@ public sealed class HealthFunctionTests
         body.RootElement.GetProperty("storageAccount").GetString().Should().Be("devstoreaccount1");
         body.RootElement.GetProperty("storageIdentity").GetString().Should().Be("unverified");
         body.RootElement.GetProperty("productionStorageAccount").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        body.RootElement.GetProperty("fieldEncryptionMode").GetString().Should().Be("not-configured");
+    }
+
+    [Fact]
+    public async Task GetHealth_FieldEncryptionConfigured_ReportsModeWithoutKeyMaterial()
+    {
+        var response = await RunHealthAsync(null, new Dictionary<string, string?>
+        {
+            ["AZURE_STORAGE_CONNECTION_STRING"] = "UseDevelopmentStorage=true"
+        }, new FieldEncryptionStatus(FieldEncryptionStatus.Configured));
+
+        using var body = await TestHttpRequestData.ReadBodyAsJsonAsync(response);
+        body.RootElement.GetProperty("fieldEncryptionMode").GetString().Should().Be("configured");
+        body.RootElement.GetRawText().Should().NotContain(FieldEncryptionTestKit.KeyBase64("test"));
     }
 
     [Theory]
@@ -69,7 +85,8 @@ public sealed class HealthFunctionTests
 
     private async Task<Microsoft.Azure.Functions.Worker.Http.HttpResponseData> RunHealthAsync(
         string? marker,
-        Dictionary<string, string?> settings)
+        Dictionary<string, string?> settings,
+        FieldEncryptionStatus? fieldEncryptionStatus = null)
     {
         var settingNames = new[]
         {
@@ -92,7 +109,7 @@ public sealed class HealthFunctionTests
             else
                 File.WriteAllText(markerPath, marker);
 
-            var function = new HealthFunction(NullLogger<HealthFunction>.Instance, _time);
+            var function = new HealthFunction(NullLogger<HealthFunction>.Instance, _time, fieldEncryptionStatus);
             return await function.GetHealth(TestHttpRequestData.CreateRequest(), CancellationToken.None);
         }
         finally

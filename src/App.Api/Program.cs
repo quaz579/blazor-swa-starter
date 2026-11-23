@@ -1,5 +1,6 @@
 using System.Text.Json;
 using App.Api.PocAuth;
+using App.Api.Security;
 using App.Api.Storage;
 using App.Api.Seeding;
 using App.Core.Models;
@@ -10,9 +11,10 @@ using Microsoft.Extensions.Hosting;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication(worker => worker.UseMiddleware<StorageConfigurationExceptionMiddleware>())
-    .ConfigureServices(services =>
+    .ConfigureServices((context, services) =>
     {
         services.AddApplicationInsightsTelemetryWorkerService();
+        services.AddFieldEncryption(context.Configuration);
 
         // HttpRequestData.ReadFromJsonAsync / HttpResponseData.WriteAsJsonAsync go through this
         // serializer; without it the worker defaults to PascalCase, breaking the camelCase contract.

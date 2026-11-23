@@ -46,6 +46,12 @@ dotnet test BlazorSwaStarter.sln -c Release
 
 Unit, component, integration, and E2E tiers, and how to run each: [`TESTING.md`](TESTING.md).
 
+## Reusable building blocks
+
+Use the starter's [field encryption](src/App.Api/Security/README.md) for protected string
+fields and its [versioned JSON blob store](src/App.Api/Storage/README.md) for ETag-based
+optimistic concurrency. Local Azurite development needs no encryption setup.
+
 ## More
 
 - [`AGENTS.md`](AGENTS.md) — the agent contract: dependency graph, which `.claude/agents/`
